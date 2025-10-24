@@ -1,0 +1,166 @@
+THE HACKATHON WE'RE PARTICIPATING IN IS THE Robotics & AI Hackathon
+loka
+24
+perjantai 24. lokakuuta
+17.00 - 26. lokak. klo 12.00
+Startup Sauna
+Espoo, Uusimaa
+SUORA
+Olet mukana
+
+Lippuni
+
+
+Kutsu ystävä
+Etkö enää pääse osallistumaan? Ilmoita isännälle peruuttamalla rekisteröitymisesi.
+Profiili täytetty · Muistutus: SMS ja sähköposti
+Tietoa tapahtumasta
+
+​Robotics + AI Hackathon
+
+​Join to build and test the future of robotics in a 48-hour challenge at Startup Sauna. Get access to humanoids, amazing hardware, and AI-powered systems. Some prizes included.
+
+​- Teams of 2–4 can apply
+
+​- Must be attended physically
+
+​- Confirmation required to join
+
+​- Mentoring from robotics and AI experts
+
+​- Access to real robots, tools, and datasets
+
+
+​Read more about our projects: roboticsnation.org, thinkinrocks.com
+
+​Challenges:
+
+​Challenge 1: Train Booster T1 for locomotion and/or fall recovery using MuJoCo or Isaac Sim.
+
+​Challenge 2: Integrate and find creative use cases for SO 101 with a webcam and other attached hardware.
+
+
+
+
+Project Idea: LePetPal - The Hybrid AI Pet Sitter
+The Problem
+Millions of pet owners worry about their pets (especially dogs) experiencing loneliness, boredom, and separation anxiety when left home alone. Existing solutions like passive pet cameras offer monitoring but lack real interaction, while automated toys lack intelligence and adaptability.
+
+Our Solution
+LePetPal is an intelligent robotic system designed to actively engage and care for pets while the owner is away. It uses a SO-101 robotic arm equipped with computer vision and a state-of-the-art Vision-Language-Action (VLA) model (SmolVLA from lerobot) to interact with the pet in meaningful ways. The system operates in two modes:
+
+Autonomous Sentry Mode: The robot constantly monitors its designated play area using a webcam. If it detects a specific trigger (like the pet's favorite ball), it can autonomously initiate a learned behavior (like picking up the ball to play).
+
+Owner-in-the-Loop Mode: The owner can remotely connect via a sleek web application to:
+
+See: View a live video stream from the robot's perspective, enhanced with "Robot Vision" overlays showing what the AI detects.
+
+Speak: Talk to their pet through the system.
+
+Interact: Trigger specific actions like dispensing a treat or initiating a play sequence by sending natural language commands (e.g., "get the treat").
+
+The "magic" happens when the owner triggers an action like "Give Treat". The command is sent remotely, the system dispenses a treat, and then the autonomous AI visually recognizes the treat and executes the learned behavior to pick it up and deliver it to the pet's bowl. This hybrid approach combines the power of AI autonomy with the owner's desire for connection and control.
+
+Why it's Impressive
+Technically Advanced: Uses a state-of-the-art VLA model (SmolVLA) for control, fine-tuned on custom data.
+
+Visually Engaging: Features a live "Robot Vision" stream showing AI detections and a polished, modern web UI for remote interaction.
+
+Hybrid Intelligence: Demonstrates a sophisticated blend of autonomous decision-making (detecting the ball) and human-in-the-loop control (triggering treats via language).
+
+Practical Application: Addresses a real, relatable problem for pet owners.
+
+Utilizes Hackathon Tech: Directly leverages the lerobot library and SO-101 hardware.
+
+Technical Specifications
+1. Hardware Setup
+Robot Arm: SO-101 Follower Arm.
+
+Primary Sensor: Single USB Webcam mounted on a static tripod, providing an overhead or 45-degree view of the entire robot workspace (including the arm, play area, treat landing zone, and bowl). Crucially, this camera must remain fixed after data collection begins.
+
+Actuator (Treats): Simple Treat Dispenser Mechanism (e.g., 3D printed chute or tube) actuated by a standard SG90 servo motor.
+
+Compute: Laptop or SBC (like Jetson Nano/Xavier if available) capable of running Python, PyTorch, lerobot, and OpenCV. Connected to the robot arm controller board via USB.
+
+Audio Output: Speaker connected to the compute device for Text-to-Speech.
+
+2. Core AI: Fine-Tuned SmolVLA
+Base Model: Pre-trained SmolVLA checkpoint provided by lerobot.
+
+Input Modalities:
+
+Single RGB camera image stream.
+
+Robot's current proprioceptive state (6 joint angles of the SO-101).
+
+Natural language text instruction.
+
+Output: Sequence ("chunk") of target joint angles for the SO-101 arm.
+
+Fine-Tuning Data: A custom LeRobotDataset containing ~100-150 teleoperated demonstrations recorded using lerobot tools. Each demo sequence (image, state, action) must be labeled with a corresponding text instruction.
+
+Target Instructions & Behaviors:
+
+"pick up the ball": Robot visually locates the ball, moves to grasp it, lifts it, and brings it to a predefined "ready-to-throw" pose.
+
+"get the treat": Robot visually locates the dispensed treat, moves to grasp it, lifts it, and drops it into a designated bowl area.
+
+(Optional) "go home": Robot moves to a neutral, safe resting position.
+
+3. Throw Mechanism
+Type: Hard-coded "Macro".
+
+Trigger: Executed after the SmolVLA model successfully completes the "pick up the ball" action sequence and reaches the "ready-to-throw" pose.
+
+Implementation: A Python function that sends a rapid, predefined sequence of target joint angles directly to the lerobot hardware interface, bypassing the VLA model, to perform a consistent throw motion. Requires careful tuning of waypoints and timing.
+
+4. Backend Server
+Framework: Flask (Python).
+
+Functionality:
+
+Load and manage the fine-tuned SmolVLA model and its inference pipeline.
+
+Continuously process the webcam feed using OpenCV.
+
+(Optional Sentry Mode) Perform simple object detection (e.g., color thresholding for the ball) on the video feed to autonomously trigger the "pick up the ball" VLA prompt.
+
+Provide an MJPEG video stream endpoint (/video_feed) with optional OpenCV overlays (bounding boxes for detected ball/treat, status text like "AI ACTIVE").
+
+Expose API endpoints:
+
+/command (POST): Accepts a JSON payload like {"prompt": "text instruction"}. Initiates the VLA inference loop for the given prompt. Manages the handoff to the throw macro if applicable. Returns status updates.
+
+/dispense_treat (POST): Sends a signal (e.g., GPIO command, serial message) to activate the SG90 servo on the treat dispenser.
+
+/speak (POST): Accepts JSON {"text": "message"}. Uses a Text-to-Speech library (gTTS) to play the audio message.
+
+Interface with the SO-101 hardware using the lerobot drivers/API for sending joint commands.
+
+5. Remote Access Tunneling
+Technology: Cloudflare Tunnel or ngrok.
+
+Purpose: To securely expose the locally running Flask server (e.g., on http://localhost:5000) to the public internet via a stable HTTPS URL (e.g., https://your-tunnel.cloudflare.com or https://your-id.ngrok-free.app).
+
+6. Frontend Application
+Framework: Next.js (React) + Tailwind CSS.
+
+Deployment: Vercel (for instant public hosting).
+
+Key Features:
+
+Displays the live MJPEG video stream from the /video_feed endpoint.
+
+Text input field and "Send Command" button for sending arbitrary natural language prompts to the /command endpoint.
+
+Preset buttons ([Play with Ball], [Give Treat], [Speak "Good Dog!"]) for quick command execution.
+
+[Give Treat] button sequence: 1) Call /dispense_treat, 2) Wait briefly, 3) Call /command with prompt "get the treat".
+
+Text input field and "Speak" button for sending messages to the /speak endpoint.
+
+Real-time status display area showing feedback from the backend (e.g., "Idle", "Executing: pick up the ball", "Error: Ball not found").
+
+Responsive design for mobile/desktop viewing.
+
+Communication: Uses standard browser fetch API to send HTTP requests directly to the public Cloudflare/ngrok Tunnel URL.
