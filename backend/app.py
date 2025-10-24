@@ -29,17 +29,27 @@ def create_app() -> Flask:
     port = int(os.getenv("PORT", 5000))
     camera_index = int(os.getenv("CAMERA_INDEX", 0))
     stream_res = os.getenv("STREAM_RES", "1280x720")
+    use_hardware = os.getenv("USE_HARDWARE", "false").lower() in ("1", "true", "yes")
+    model_mode = os.getenv("MODEL_MODE", "scripted").lower()  # 'scripted' | 'smolvla'
+    calibration_path = os.getenv("CALIBRATION_PATH", "")
     width, height = [int(x) for x in stream_res.split("x")] if "x" in stream_res else (1280, 720)
 
     # Singletons
     camera = CameraCapture(camera_index=camera_index, width=width, height=height)
     status_store = StatusStore()
 
-    arm = ArmAdapter()  # real or mock decided inside adapter
+    arm = ArmAdapter(use_hardware=use_hardware)  # real or mock decided inside adapter
     servo = ServoAdapter()
     tts = TTSSpeaker()
-    model = ModelRunner(os.getenv("MODEL_PATH", ""), rate_hz=int(os.getenv("INFERENCE_RATE_HZ", 15)))
-    safety = SafetyManager()
+    model = ModelRunner(os.getenv("MODEL_PATH", ""), rate_hz=int(os.getenv("INFERENCE_RATE_HZ", 15)), mode=model_mode)
+    safety = SafetyManager(calibration_path=calibration_path if calibration_path else None)
+
+    if use_hardware:
+        try:
+            arm.connect()
+        except Exception:
+            # keep going with mock if connect fails
+            pass
 
     cmd_mgr = CommandManager(status_store=status_store, arm=arm, servo=servo, tts=tts, model=model, safety=safety)
 
@@ -118,6 +128,9 @@ def create_app() -> Flask:
         "model": model,
         "safety": safety,
         "PORT": port,
+        "USE_HARDWARE": use_hardware,
+        "MODEL_MODE": model_mode,
+        "CALIBRATION_PATH": calibration_path,
     })
 
     return app
