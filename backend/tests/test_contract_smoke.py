@@ -1,7 +1,7 @@
 import json
 import re
 import time
-from app import create_app
+from backend.app import create_app
 
 
 def test_health():

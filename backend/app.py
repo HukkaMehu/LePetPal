@@ -7,14 +7,14 @@ from typing import Optional
 from flask import Flask, Response, jsonify, request
 from dotenv import load_dotenv
 
-from video import CameraCapture, mjpeg_stream
-from status_store import StatusStore
-from command_manager import CommandManager, BusyError
-from adapters.arm_adapter import ArmAdapter
-from adapters.servo_adapter import ServoAdapter
-from adapters.tts import TTSSpeaker
-from model_runner import ModelRunner
-from safety import SafetyManager
+from backend.video import CameraCapture, mjpeg_stream
+from backend.status_store import StatusStore
+from backend.command_manager import CommandManager, BusyError
+from backend.adapters.arm_adapter import ArmAdapter
+from backend.adapters.servo_adapter import ServoAdapter
+from backend.adapters.tts import TTSSpeaker
+from backend.model_runner import ModelRunner
+from backend.safety import SafetyManager
 
 
 ALLOWED_PROMPTS = {"pick up the ball", "get the treat", "go home"}
@@ -60,6 +60,22 @@ def create_app() -> Flask:
     @app.get("/video_feed")
     def video_feed():
         overlays = request.args.get("overlays", "1") == "1"
+        cam_param = request.args.get("camera")
+        w_param = request.args.get("width")
+        h_param = request.args.get("height")
+        try:
+            new_w = int(w_param) if w_param else None
+            new_h = int(h_param) if h_param else None
+            new_idx = int(cam_param) if cam_param is not None else None
+        except ValueError:
+            new_w = new_h = new_idx = None
+
+        if new_idx is not None or new_w is not None or new_h is not None:
+            # Switch camera or resolution on-the-fly
+            target_idx = new_idx if new_idx is not None else (getattr(camera, 'index', 0) or 0)
+            target_w = new_w if new_w is not None else getattr(camera, 'width', 1280)
+            target_h = new_h if new_h is not None else getattr(camera, 'height', 720)
+            camera.switch_camera(target_idx, target_w, target_h)
         return Response(mjpeg_stream(camera, overlays=overlays), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.post("/command")
