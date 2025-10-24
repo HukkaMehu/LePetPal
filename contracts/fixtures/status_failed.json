@@ -1,0 +1,7 @@
+{
+  "state": "failed",
+  "phase": "detect",
+  "confidence": 0.22,
+  "message": "Object not found",
+  "duration_ms": 10000
+}

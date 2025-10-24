@@ -1,0 +1,15 @@
+{
+  "GET /health": "health_ok.json",
+  "POST /command": {
+    "accepted": "command_accepted.json",
+    "busy_409": "error_busy_409.json",
+    "invalid_400": "error_invalid_400.json"
+  },
+  "GET /status/{id}": {
+    "executing": "status_executing.json",
+    "succeeded": "status_succeeded.json",
+    "failed": "status_failed.json"
+  },
+  "POST /dispense_treat": "dispense_ok.json",
+  "POST /speak": "speak_ok.json"
+}

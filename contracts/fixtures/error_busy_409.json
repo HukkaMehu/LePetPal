@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "busy",
+    "http": 409,
+    "message": "Another command is in progress"
+  }
+}

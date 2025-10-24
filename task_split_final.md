@@ -142,3 +142,26 @@ Goal: AI-first, hackathon-ready split that enables fast parallel work with a fro
 ---
 
 Status: FINAL task split for v1.0-lite. Any edits must keep the integration contract intact unless both engineers agree to a version bump.
+
+---
+
+## BONUS FEATURES (Optional / Low Priority)
+- UI polish
+  - Animated overlays, sound cues, dark mode toggle.
+  - Demo mode banner with quick tips.
+- Frontend
+  - SSE upgrade for live status (replace polling) once stable.
+  - Type-safe client from OpenAPI (post-hackathon), centralized fetch wrapper.
+  - Keyboard shortcuts for presets (P: Play, T: Treat, H: Home, S: Speak).
+- Backend
+  - Token auth (Bearer) and CORS allowlist; rate limiting on POSTs.
+  - Minimal Sentry (color-threshold) auto-trigger with cooldown, toggle in config.
+  - Structured metrics endpoint `/metrics` with basic counters.
+- AI/Robotics
+  - Additional behaviors: “place ball to zone”, “nudge object”, “stay”.
+  - Simple vision assist (color mask) to stabilize detections.
+  - Throw macro variants (short/long); safety playbook (auto-home on error).
+- Ops
+  - One-click tunnel scripts (ngrok/Cloudflare) with env injection.
+  - Basic log viewer page in frontend.
+  - Demo recorder (save GIF/short MP4 of last action).
