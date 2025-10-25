@@ -64,5 +64,4 @@ cython_debug/
 .DS_Store
 Thumbs.db
 desktop.ini
-temp_lerobot_clone/ 
 mcp_config.json

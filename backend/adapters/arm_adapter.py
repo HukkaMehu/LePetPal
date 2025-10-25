@@ -18,6 +18,15 @@ class ArmAdapter:
         self._use_hardware = use_hardware
         self._driver: SO101Follower | None = None
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if the robot is currently connected."""
+        if not self._use_hardware:
+            return self._connected
+        if self._driver is None:
+            return False
+        return self._driver.is_connected
+
     def connect(self) -> bool:
         if not self._use_hardware or SO101Follower is None:
             print("INFO: ArmAdapter running in MOCK mode.")
@@ -31,8 +40,9 @@ class ArmAdapter:
             self._driver = SO101Follower(robot_config)
             self._driver.connect()
             self._connected = True
-            print("INFO: ArmAdapter successfully connected to hardware.")
+            print(f"INFO: ArmAdapter successfully connected to hardware. is_connected={self.is_connected}")
             self.home()
+            print(f"INFO: ArmAdapter homed. is_connected={self.is_connected}")
             return True
         except Exception as e:
             print(f"ERROR: Failed to connect to arm hardware: {e}")
@@ -40,9 +50,8 @@ class ArmAdapter:
             return False
 
     def get_joint_angles(self) -> List[float]:
-        if self._use_hardware and self._driver is not None:
-            joint_positions, _ = self._driver.get_joint_states()
-            self._joints = joint_positions.tolist()
+        # Return the last commanded joints. For now, we don't query hardware feedback.
+        # These values are updated by send_joint_targets() and home().
         return list(self._joints)
 
     def send_joint_targets(self, chunk: Dict) -> None:
@@ -51,6 +60,10 @@ class ArmAdapter:
         if targets and len(targets) == 6:
             self._joints = list(targets)
             if self._use_hardware and self._driver is not None:
+                if not self._driver.is_connected:
+                    print(f"WARNING: Robot not connected (is_connected={self.is_connected}), skipping action send")
+                    return
+                print(f"DEBUG: Sending action to robot (is_connected={self.is_connected})")
                 action = {
                     "shoulder_pan.pos": float(targets[0]),
                     "shoulder_lift.pos": float(targets[1]),
@@ -59,7 +72,11 @@ class ArmAdapter:
                     "wrist_roll.pos": float(targets[4]),
                     "gripper.pos": float(targets[5]),
                 }
-                self._driver.send_action(action)
+                try:
+                    self._driver.send_action(action)
+                except Exception as e:
+                    print(f"ERROR: Failed to send action: {e}")
+                    raise
 
     def home(self) -> None:
         """Move to a neutral, safe home pose."""

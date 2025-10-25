@@ -7,14 +7,14 @@ from typing import Optional
 from flask import Flask, Response, jsonify, request
 from dotenv import load_dotenv
 
-from video import CameraCapture, mjpeg_stream
-from status_store import StatusStore
-from command_manager import CommandManager, BusyError
-from adapters.arm_adapter import ArmAdapter
-from adapters.servo_adapter import ServoAdapter
-from adapters.tts import TTSSpeaker
-from model_runner import ModelRunner
-from safety import SafetyManager
+from backend.video import CameraCapture, mjpeg_stream
+from backend.status_store import StatusStore
+from backend.command_manager import CommandManager, BusyError
+from backend.adapters.arm_adapter import ArmAdapter
+from backend.adapters.servo_adapter import ServoAdapter
+from backend.adapters.tts import TTSSpeaker
+from backend.model_runner import ModelRunner
+from backend.safety import SafetyManager
 
 
 ALLOWED_PROMPTS = {"pick up the ball", "get the treat", "go home"}
@@ -41,7 +41,14 @@ def create_app() -> Flask:
     arm = ArmAdapter(use_hardware=use_hardware)  # real or mock decided inside adapter
     servo = ServoAdapter()
     tts = TTSSpeaker()
-    model = ModelRunner(os.getenv("MODEL_PATH", ""), rate_hz=int(os.getenv("INFERENCE_RATE_HZ", 15)), mode=model_mode)
+    device = os.getenv("DEVICE", "cpu")
+    model = ModelRunner(
+        os.getenv("MODEL_PATH", ""),
+        rate_hz=int(os.getenv("INFERENCE_RATE_HZ", 15)),
+        mode=model_mode,
+        camera=camera,
+        device=device
+    )
     safety = SafetyManager(calibration_path=calibration_path if calibration_path else None)
 
     if use_hardware:
