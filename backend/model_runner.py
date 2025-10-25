@@ -28,20 +28,37 @@ class ModelRunner:
                 self.loaded = True
                 return
             try:
-                print(f"INFO: Loading smolvla policy from {self.model_path} on device={self.device}...")
+                # Handle DirectML device for Snapdragon GPU
+                use_directml = self.device and self.device.startswith('privateuseone')
+                dml_device = None
+                if use_directml:
+                    import torch_directml
+                    dml_device = torch_directml.device()
+                    print(f"INFO: DirectML device available: {dml_device}")
+                
+                # Load model on CPU first to avoid CUDA check, then move to DirectML
+                print(f"INFO: Loading smolvla policy from {self.model_path} on cpu (will move to DirectML after)...")
                 from lerobot.configs.policies import PreTrainedConfig
                 from lerobot.policies.factory import get_policy_class
                 from lerobot.processor.pipeline import DataProcessorPipeline
 
-                # Load config (auto-adapts device if original device not available)
+                # Load config with CPU device
                 self.cfg = PreTrainedConfig.from_pretrained(self.model_path)
-                # Override device if specified
-                if self.device:
-                    self.cfg.device = self.device
+                self.cfg.device = "cpu"
 
-                # Load policy class and weights
+                # Load policy class and weights on CPU
                 policy_cls = get_policy_class(self.cfg.type)
                 self.policy = policy_cls.from_pretrained(self.model_path, config=self.cfg)
+                
+                # Move to DirectML if available
+                if use_directml and dml_device:
+                    print(f"INFO: Converting model to float32 (DirectML doesn't support bfloat16)...")
+                    import torch
+                    self.policy = self.policy.to(torch.float32)
+                    print(f"INFO: Moving policy to DirectML device: {dml_device}")
+                    self.policy = self.policy.to(dml_device)
+                    self.cfg.device = dml_device
+                
                 self.policy.eval()
 
                 # Load pre/post pipelines
@@ -136,75 +153,81 @@ class ModelRunner:
                 # Preprocessor expects: observation.images.camera1, observation.images.camera2, observation.images.camera3, observation.state
                 obs = {}
 
-            # Image: BGR->RGB, resize to 256x256, HWC->CHW, [0,1] float32
-            img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            if (img_rgb.shape[0], img_rgb.shape[1]) != (exp_h, exp_w):
-                img_rgb = cv2.resize(img_rgb, (exp_w, exp_h), interpolation=cv2.INTER_LINEAR)
-            img_chw = np.transpose(img_rgb, (2, 0, 1)).astype(np.float32) / 255.0
-            img_tensor = torch.from_numpy(img_chw)
-            
-            # Use same image for all 3 camera views (we only have 1 camera)
-            obs["observation.images.camera1"] = img_tensor
-            obs["observation.images.camera2"] = img_tensor
-            obs["observation.images.camera3"] = img_tensor
+                # Image: BGR->RGB, resize to 256x256, HWC->CHW, [0,1] float32
+                img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                if (img_rgb.shape[0], img_rgb.shape[1]) != (exp_h, exp_w):
+                    img_rgb = cv2.resize(img_rgb, (exp_w, exp_h), interpolation=cv2.INTER_LINEAR)
+                img_chw = np.transpose(img_rgb, (2, 0, 1)).astype(np.float32) / 255.0
+                img_tensor = torch.from_numpy(img_chw)
+                
+                # Use same image for all 3 camera views (we only have 1 camera)
+                obs["observation.images.camera1"] = img_tensor
+                obs["observation.images.camera2"] = img_tensor
+                obs["observation.images.camera3"] = img_tensor
 
-            # State: use zeros for now (policy may not require state or we can query arm later)
-            if state_key is not None and state_len > 0:
-                state_vec = np.zeros((state_len,), dtype=np.float32)
-                obs[state_key] = torch.from_numpy(state_vec)
+                # State: use zeros for now (6D state expected)
+                if has_state:
+                    state_vec = np.zeros((6,), dtype=np.float32)
+                    obs["observation.state"] = torch.from_numpy(state_vec)
 
-            # Add task instruction for the tokenizer_processor
-            obs["task"] = instruction
+                # Create full transition with complementary_data for task instruction
+                # The tokenizer processor needs this structure
+                from lerobot.processor.converters import create_transition
+                from lerobot.processor.core import TransitionKey
+                
+                t_trans = time.time()
+                transition = create_transition(
+                    observation=obs,
+                    complementary_data={'task': instruction}
+                )
+                print(f"DEBUG: create_transition took {(time.time()-t_trans)*1000:.1f}ms")
 
-            # Create full transition with complementary_data for task instruction
-            # The tokenizer processor needs this structure
-            from lerobot.processor.converters import create_transition
-            from lerobot.processor.core import TransitionKey
-            
-            transition = create_transition(
-                observation=obs,
-                complementary_data={'task': instruction}
-            )
-            
-            # Debug: check transition structure
-            print(f"DEBUG: transition keys: {list(transition.keys())}")
-            print(f"DEBUG: complementary_data: {transition.get('complementary_data')}")
+                # Process the full transition, then extract observation
+                t_prep = time.time()
+                prepped_transition = self.preproc._forward(transition)
+                prepped = prepped_transition[TransitionKey.OBSERVATION]
+                print(f"DEBUG: preproc._forward took {(time.time()-t_prep)*1000:.1f}ms")
 
-            # Process the full transition, then extract observation
-            prepped_transition = self.preproc._forward(transition)
-            prepped = prepped_transition[TransitionKey.OBSERVATION]
+                # Inference
+                t_inf = time.time()
+                with torch.no_grad():
+                    action = self.policy.select_action(prepped)
+                print(f"DEBUG: policy.select_action took {(time.time()-t_inf)*1000:.1f}ms")
 
-            # Inference
-            with torch.no_grad():
-                action = self.policy.select_action(prepped)
-
-            # Postprocess
-            action = self.postproc.process_action(action)
-            if isinstance(action, torch.Tensor):
-                action_np = action.detach().cpu().numpy()
-            else:
-                action_np = np.asarray(action)
-            # Remove batch dim if present
-            if action_np.ndim > 1:
-                action_np = action_np[0]
-
-            # Map to 6D targets (assumes action_np is [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper])
-            if action_np.shape[0] != 6:
-                print(f"WARNING: Expected 6D action, got shape {action_np.shape}. Padding/truncating.")
-                if action_np.shape[0] < 6:
-                    action_np = np.pad(action_np, (0, 6 - action_np.shape[0]), constant_values=0.0)
+                # Postprocess
+                t_post = time.time()
+                action = self.postproc.process_action(action)
+                print(f"DEBUG: postproc took {(time.time()-t_post)*1000:.1f}ms")
+                if isinstance(action, torch.Tensor):
+                    action_np = action.detach().cpu().numpy()
                 else:
-                    action_np = action_np[:6]
+                    action_np = np.asarray(action)
+                # Remove batch dim if present
+                if action_np.ndim > 1:
+                    action_np = action_np[0]
 
-            targets = action_np.tolist()
-            step_count += 1
-            phase = f"step_{step_count}"
-            confidence = 0.9  # placeholder
+                # Map to 6D targets (assumes action_np is [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper])
+                if action_np.shape[0] != 6:
+                    print(f"WARNING: Expected 6D action, got shape {action_np.shape}. Padding/truncating.")
+                    if action_np.shape[0] < 6:
+                        action_np = np.pad(action_np, (0, 6 - action_np.shape[0]), constant_values=0.0)
+                    else:
+                        action_np = action_np[:6]
 
-            yield {"phase": phase, "targets": targets, "confidence": confidence}
+                targets = action_np.tolist()
+                step_count += 1
+                phase = f"step_{step_count}"
+                confidence = 0.9  # placeholder
 
-            # Rate limiting
-            elapsed = time.time() - t0
-            sleep_time = max(0, (1.0 / self.rate_hz) - elapsed)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+                yield {"phase": phase, "targets": targets, "confidence": confidence}
+
+                # Rate limiting
+                elapsed = time.time() - t0
+                sleep_time = max(0, (1.0 / self.rate_hz) - elapsed)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+            except Exception as e:
+                print(f"ERROR: Exception in VLA inference loop: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
