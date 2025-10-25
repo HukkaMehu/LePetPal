@@ -1,0 +1,8 @@
+tunnel: 08d11485-1dad-40de-acdf-a2ef6853a53e
+credentials-file: C:\Users\henri\.cloudflared\08d11485-1dad-40de-acdf-a2ef6853a53e.json
+
+ingress:
+  # Route all traffic to Flask backend
+  - service: http://localhost:5000
+    originRequest:
+      noTLSVerify: true

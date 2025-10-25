@@ -31,11 +31,55 @@ curl https://your-url/health
 
 ---
 
-### 2. Video Feed
+### 2. Main Camera Feed (Recommended)
+
+**GET** `/camera`
+
+MJPEG video stream from the main camera (camera 0). This is a **persistent endpoint** that always shows the primary camera with automatic reconnection.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `quality` | int | 50 | 1-100 | JPEG quality (lower = faster) |
+| `scale` | float | 0.5 | 0.1-1.0 | Scale factor (lower = faster) |
+| `fps` | int | 10 | 1-30 | Target frames per second |
+| `overlays` | int | 1 | 0 or 1 | Show timestamp overlay |
+
+**Response:**
+- Content-Type: `multipart/x-mixed-replace; boundary=frame`
+- MJPEG video stream
+
+**Features:**
+- ✅ Always shows camera 0 (main camera)
+- ✅ Automatic reconnection if camera disconnects
+- ✅ Shows last frame if camera temporarily unavailable
+- ✅ No synthetic fallback - real camera only
+
+**Examples:**
+```bash
+# Default (optimized for internet)
+curl https://lepetpal.verkkoventure.com/camera
+
+# Ultra-low bandwidth
+curl https://lepetpal.verkkoventure.com/camera?quality=30&scale=0.3&fps=5
+
+# High quality
+curl https://lepetpal.verkkoventure.com/camera?quality=80&scale=1.0&fps=30
+```
+
+**HTML/React:**
+```html
+<img src="https://lepetpal.verkkoventure.com/camera?quality=50&scale=0.5&fps=10" />
+```
+
+---
+
+### 3. Video Feed (Legacy)
 
 **GET** `/video_feed`
 
-MJPEG video stream from camera.
+MJPEG video stream with camera switching support. **Use `/camera` instead for the main camera.**
 
 **Query Parameters:**
 
@@ -78,7 +122,7 @@ curl https://your-url/video_feed?overlays=0
 
 ---
 
-### 3. Send Command
+### 4. Send Command
 
 **POST** `/command`
 
@@ -155,7 +199,7 @@ console.log('Request ID:', data.request_id);
 
 ---
 
-### 4. Get Command Status
+### 5. Get Command Status
 
 **GET** `/status/:request_id`
 
@@ -243,7 +287,7 @@ const interval = setInterval(async () => {
 
 ---
 
-### 5. Dispense Treat
+### 6. Dispense Treat
 
 **POST** `/dispense_treat`
 
@@ -299,7 +343,7 @@ await fetch('https://your-url/dispense_treat', {
 
 ---
 
-### 6. Text-to-Speech
+### 7. Text-to-Speech
 
 **POST** `/speak`
 
@@ -419,7 +463,7 @@ pollStatus(request_id);
 
 ### 4. Display Video Feed
 ```html
-<img src="https://your-url/video_feed?quality=50&scale=0.5&fps=10" />
+<img src="https://lepetpal.verkkoventure.com/camera?quality=50&scale=0.5&fps=10" />
 ```
 
 ---
@@ -469,7 +513,8 @@ For production, consider:
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/health` | GET | Health check |
-| `/video_feed` | GET | Video stream |
+| `/camera` | GET | Main camera stream (recommended) |
+| `/video_feed` | GET | Video stream with camera switching |
 | `/command` | POST | Send robot command |
 | `/status/:id` | GET | Get command status |
 | `/dispense_treat` | POST | Dispense treat |

@@ -74,8 +74,29 @@ def create_app() -> Flask:
     def health():
         return jsonify({"status": "ok", "api": 1, "version": "v0.1"}), 200
 
+    @app.get("/camera")
+    def camera_feed():
+        """
+        Persistent main camera endpoint - always shows camera 0.
+        This is the recommended endpoint for frontend integration.
+        """
+        # Performance optimization parameters
+        quality = int(request.args.get("quality", "50"))  # JPEG quality (1-100)
+        scale = float(request.args.get("scale", "0.5"))   # Scale factor (0.1-1.0)
+        fps = int(request.args.get("fps", "10"))          # Target FPS (1-30)
+        overlays = request.args.get("overlays", "1") == "1"
+        
+        return Response(
+            mjpeg_stream(camera, overlays=overlays, quality=quality, scale=scale, fps=fps), 
+            mimetype="multipart/x-mixed-replace; boundary=frame"
+        )
+
     @app.get("/video_feed")
     def video_feed():
+        """
+        Legacy endpoint with camera switching support.
+        Use /camera for the main camera feed instead.
+        """
         overlays = request.args.get("overlays", "1") == "1"
         cam_param = request.args.get("camera")
         w_param = request.args.get("width")

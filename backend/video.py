@@ -8,24 +8,28 @@ from typing import Generator
 class CameraCapture:
     def __init__(self, camera_index: int = 0, width: int = 1280, height: int = 720):
         self.cap = None
-        self.synthetic = False
         self.width = width
         self.height = height
-        self.index = None
-        self._open_with_fallback(camera_index, width, height)
-        if self.cap is None or not self.cap.isOpened():
-            # auto-scan a few indices
-            for i in range(0, 5):
-                if self._open_with_fallback(i, width, height):
-                    break
-        if self.cap is None or not self.cap.isOpened():
-            self.synthetic = True
-            print(f"WARNING: No camera found. Using synthetic video feed.")
-        else:
-            print(f"INFO: Camera {self.index} opened successfully ({self.width}x{self.height})")
-        self.t0 = time.time()
+        self.index = camera_index
+        self.last_frame = None
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        
+        # Try to open camera
+        if not self._open_camera(camera_index, width, height):
+            raise RuntimeError(f"Failed to open camera {camera_index}. Please check camera connection.")
+        
+        print(f"INFO: Camera {self.index} opened successfully ({self.width}x{self.height})")
 
-    def _open_with_fallback(self, index: int, width: int, height: int) -> bool:
+    def _open_camera(self, index: int, width: int, height: int) -> bool:
+        """Open camera with platform-specific backend."""
+        # Release existing camera if any
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+        
         # Try platform-specific backend first on Windows
         cap = None
         if sys.platform.startswith('win'):
@@ -35,45 +39,69 @@ class CameraCapture:
                 cap = cv2.VideoCapture(index)
         else:
             cap = cv2.VideoCapture(index)
+        
         if cap is not None and cap.isOpened():
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            # Replace existing
-            if self.cap is not None:
-                try:
-                    self.cap.release()
-                except Exception:
-                    pass
+            # Set buffer size to 1 for lower latency
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             self.cap = cap
             self.index = index
-            self.synthetic = False
             self.width = width
             self.height = height
+            self.reconnect_attempts = 0
             return True
         return False
+    
+    def _reconnect(self) -> bool:
+        """Attempt to reconnect to camera."""
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            print(f"ERROR: Camera {self.index} failed after {self.max_reconnect_attempts} reconnection attempts.")
+            return False
+        
+        self.reconnect_attempts += 1
+        print(f"WARNING: Camera {self.index} disconnected. Reconnecting... (attempt {self.reconnect_attempts}/{self.max_reconnect_attempts})")
+        time.sleep(0.5)
+        return self._open_camera(self.index, self.width, self.height)
 
     def switch_camera(self, index: int, width: int, height: int) -> bool:
-        return self._open_with_fallback(index, width, height)
+        """Switch to a different camera."""
+        return self._open_camera(index, width, height)
 
     def read(self):
-        if self.synthetic:
-            t = time.time() - self.t0
-            img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-            cv2.putText(img, f"LePetPal - synthetic ({t:.1f}s)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
-            x = int((np.sin(t) * 0.4 + 0.5) * (self.width - 120))
-            y = int((np.cos(t * 0.7) * 0.3 + 0.5) * (self.height - 80))
-            cv2.rectangle(img, (x, y), (x + 120, y + 80), (0, 255, 0), 2)
-            return True, img
-        ret, frame = self.cap.read() if self.cap is not None else (False, None)
+        """Read frame from camera with automatic reconnection."""
+        if self.cap is None or not self.cap.isOpened():
+            if not self._reconnect():
+                # Return last known good frame if available
+                if self.last_frame is not None:
+                    return True, self.last_frame.copy()
+                # Create error frame
+                error_frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                cv2.putText(error_frame, "Camera Disconnected", (50, self.height // 2), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+                return False, error_frame
+        
+        ret, frame = self.cap.read()
         if not ret or frame is None:
-            # fallback to synthetic if camera drops
-            self.synthetic = True
-            try:
-                self.width = int((self.cap and self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.width)
-                self.height = int((self.cap and self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.height)
-            except Exception:
-                pass
-            return self.read()
+            # Try to reconnect
+            if self._reconnect():
+                ret, frame = self.cap.read()
+                if ret and frame is not None:
+                    self.last_frame = frame.copy()
+                    return True, frame
+            
+            # Return last known good frame
+            if self.last_frame is not None:
+                return True, self.last_frame.copy()
+            
+            # Create error frame
+            error_frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            cv2.putText(error_frame, "Camera Error", (50, self.height // 2), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+            return False, error_frame
+        
+        # Store last good frame
+        self.last_frame = frame.copy()
         return True, frame
 
 
