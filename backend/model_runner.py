@@ -56,6 +56,7 @@ class ModelRunner:
                 )
                 self.loaded = True
                 print(f"INFO: smolvla policy loaded successfully.")
+                print(f"DEBUG: Policy input features: {list(self.cfg.input_features.keys())}")
             except Exception as e:
                 print(f"ERROR: Failed to load smolvla policy: {e}")
                 print("INFO: Falling back to scripted mode.")
@@ -107,27 +108,16 @@ class ModelRunner:
             print("ERROR: No camera provided to ModelRunner for smolvla mode.")
             return
 
-        # Determine expected image key and shape from config
-        img_key = None
-        exp_h = exp_w = None
-        for k, ft in self.cfg.input_features.items():
-            if getattr(ft, "type", None).name == "VISUAL":
-                img_key = k
-                _, exp_h, exp_w = ft.shape
-                break
-
-        if img_key is None:
+        # Determine expected image shape from config (preprocessor expects 256x256 based on config)
+        exp_h = exp_w = 256
+        
+        # Check if policy has visual and state features
+        has_visual = any(getattr(ft, "type", None).name == "VISUAL" for ft in self.cfg.input_features.values())
+        has_state = any(getattr(ft, "type", None).name == "STATE" for ft in self.cfg.input_features.values())
+        
+        if not has_visual:
             print("ERROR: Policy has no VISUAL input feature.")
             return
-
-        # Get state feature shape (if any)
-        state_key = None
-        state_len = 0
-        for k, ft in self.cfg.input_features.items():
-            if getattr(ft, "type", None).name == "STATE":
-                state_key = k
-                state_len = int(ft.shape[0])
-                break
 
         print(f"INFO: Running smolvla inference loop at {self.rate_hz} Hz. Instruction: '{instruction}'")
         step_count = 0
@@ -141,23 +131,40 @@ class ModelRunner:
                 time.sleep(1.0 / max(1, self.rate_hz))
                 continue
 
-            # Prepare observation dict
+            # Prepare observation dict with correct structure
+            # Preprocessor expects: observation.images.camera1, observation.images.camera2, observation.images.camera3, observation.state
             obs = {}
 
-            # Image: BGR->RGB, resize, HWC->CHW, [0,1] float32
+            # Image: BGR->RGB, resize to 256x256, HWC->CHW, [0,1] float32
             img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             if (img_rgb.shape[0], img_rgb.shape[1]) != (exp_h, exp_w):
                 img_rgb = cv2.resize(img_rgb, (exp_w, exp_h), interpolation=cv2.INTER_LINEAR)
             img_chw = np.transpose(img_rgb, (2, 0, 1)).astype(np.float32) / 255.0
-            obs[img_key] = torch.from_numpy(img_chw)
+            img_tensor = torch.from_numpy(img_chw)
+            
+            # Use same image for all 3 camera views (we only have 1 camera)
+            obs["observation.images.camera1"] = img_tensor
+            obs["observation.images.camera2"] = img_tensor
+            obs["observation.images.camera3"] = img_tensor
 
-            # State: use zeros for now (policy may not require state or we can query arm later)
-            if state_key is not None and state_len > 0:
-                state_vec = np.zeros((state_len,), dtype=np.float32)
-                obs[state_key] = torch.from_numpy(state_vec)
+            # State: use zeros for now (6D state expected)
+            if has_state:
+                state_vec = np.zeros((6,), dtype=np.float32)
+                obs["observation.state"] = torch.from_numpy(state_vec)
 
-            # Preprocess
-            prepped = self.preproc.process_observation(obs)
+            # Create full transition with complementary_data for task instruction
+            # The tokenizer processor needs this structure
+            from lerobot.processor.converters import create_transition
+            from lerobot.processor.core import TransitionKey
+            
+            transition = create_transition(
+                observation=obs,
+                complementary_data={'task': instruction}
+            )
+
+            # Process the full transition, then extract observation
+            prepped_transition = self.preproc._forward(transition)
+            prepped = prepped_transition[TransitionKey.OBSERVATION]
 
             # Inference
             with torch.no_grad():

@@ -37,10 +37,15 @@ class CommandManager:
             self._active_req_id = req_id
             self._cancel_event.clear()
 
+        print(f"DEBUG: CommandManager.start() called with prompt='{prompt}', req_id={req_id}")
+        import sys
+        sys.stdout.flush()
         self.status.create(req_id, {"state": "planning", "phase": None, "message": f"Accepted: {prompt}"})
 
         t = threading.Thread(target=self._run_job, args=(req_id, prompt, options), daemon=True)
         t.start()
+        print(f"DEBUG: Thread started for req_id={req_id}")
+        sys.stdout.flush()
         return req_id
 
     def interrupt_and_home(self) -> str:
@@ -66,11 +71,17 @@ class CommandManager:
             self._cancel_event.clear()
 
     def _run_job(self, req_id: str, prompt: str, options: dict):
+        import sys
         t0 = time.time()
         try:
+            print(f"DEBUG: _run_job thread started for {req_id} with prompt '{prompt}'")
+            sys.stdout.flush()
             self.status.update(req_id, {"state": "executing", "phase": "detect", "message": "Detecting"})
             # Mocked loop using ModelRunner stub
+            print(f"DEBUG: Starting model inference loop")
+            sys.stdout.flush()
             for chunk in self.model.infer(prompt):
+                print(f"DEBUG: Got chunk from model: phase={chunk.get('phase')}, targets={chunk.get('targets')}")
                 if self._cancel_event.is_set():
                     self.arm.home()
                     self.status.update(req_id, {"state": "aborted", "message": "Interrupted by Go Home"})
@@ -79,7 +90,9 @@ class CommandManager:
                     self.status.update(req_id, {"state": "failed", "message": "safety check failed"})
                     return
                 # Send to arm (mock)
+                print(f"DEBUG: About to send targets to arm")
                 self.arm.send_joint_targets(chunk)
+                print(f"DEBUG: Targets sent successfully")
                 # Update status with phase/confidence if provided
                 phase = chunk.get("phase")
                 conf = chunk.get("confidence")
@@ -94,6 +107,9 @@ class CommandManager:
 
             self.status.update(req_id, {"state": "succeeded", "message": "Completed", "duration_ms": int((time.time() - t0) * 1000)})
         except Exception as e:
+            print(f"ERROR: Exception in _run_job: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             self.status.update(req_id, {"state": "failed", "message": str(e)})
         finally:
             with self._active_lock:
