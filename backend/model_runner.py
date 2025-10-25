@@ -122,18 +122,19 @@ class ModelRunner:
         print(f"INFO: Running smolvla inference loop at {self.rate_hz} Hz. Instruction: '{instruction}'")
         step_count = 0
         while True:
-            t0 = time.time()
+            try:
+                t0 = time.time()
 
-            # Capture frame from camera
-            ok, frame_bgr = self.camera.read()
-            if not ok or frame_bgr is None:
-                print("WARNING: Failed to read camera frame. Skipping step.")
-                time.sleep(1.0 / max(1, self.rate_hz))
-                continue
+                # Capture frame from camera
+                ok, frame_bgr = self.camera.read()
+                if not ok or frame_bgr is None:
+                    print("WARNING: Failed to read camera frame. Skipping step.")
+                    time.sleep(1.0 / max(1, self.rate_hz))
+                    continue
 
-            # Prepare observation dict with correct structure
-            # Preprocessor expects: observation.images.camera1, observation.images.camera2, observation.images.camera3, observation.state
-            obs = {}
+                # Prepare observation dict with correct structure
+                # Preprocessor expects: observation.images.camera1, observation.images.camera2, observation.images.camera3, observation.state
+                obs = {}
 
             # Image: BGR->RGB, resize to 256x256, HWC->CHW, [0,1] float32
             img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -147,10 +148,13 @@ class ModelRunner:
             obs["observation.images.camera2"] = img_tensor
             obs["observation.images.camera3"] = img_tensor
 
-            # State: use zeros for now (6D state expected)
-            if has_state:
-                state_vec = np.zeros((6,), dtype=np.float32)
-                obs["observation.state"] = torch.from_numpy(state_vec)
+            # State: use zeros for now (policy may not require state or we can query arm later)
+            if state_key is not None and state_len > 0:
+                state_vec = np.zeros((state_len,), dtype=np.float32)
+                obs[state_key] = torch.from_numpy(state_vec)
+
+            # Add task instruction for the tokenizer_processor
+            obs["task"] = instruction
 
             # Create full transition with complementary_data for task instruction
             # The tokenizer processor needs this structure
@@ -161,6 +165,10 @@ class ModelRunner:
                 observation=obs,
                 complementary_data={'task': instruction}
             )
+            
+            # Debug: check transition structure
+            print(f"DEBUG: transition keys: {list(transition.keys())}")
+            print(f"DEBUG: complementary_data: {transition.get('complementary_data')}")
 
             # Process the full transition, then extract observation
             prepped_transition = self.preproc._forward(transition)

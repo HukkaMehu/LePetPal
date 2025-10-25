@@ -20,6 +20,9 @@ class CameraCapture:
                     break
         if self.cap is None or not self.cap.isOpened():
             self.synthetic = True
+            print(f"WARNING: No camera found. Using synthetic video feed.")
+        else:
+            print(f"INFO: Camera {self.index} opened successfully ({self.width}x{self.height})")
         self.t0 = time.time()
 
     def _open_with_fallback(self, index: int, width: int, height: int) -> bool:
