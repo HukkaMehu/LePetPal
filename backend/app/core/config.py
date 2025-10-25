@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # AI Service
     AI_SERVICE_URL: str = "http://localhost:8001"
     
+    # Video Source
+    # Can be:
+    # - Integer (0, 1, 2) for local camera index
+    # - URL (http://..., https://...) for remote camera stream
+    VIDEO_SOURCE: str = "0"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

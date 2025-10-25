@@ -15,6 +15,7 @@ from aiortc.contrib.media import MediaRelay
 from av import VideoFrame
 from app.core.video_buffer import video_buffer
 from app.workers.frame_processor import frame_processor
+from app.core.config import settings
 
 router = APIRouter(prefix="/video", tags=["video"])
 
@@ -116,30 +117,36 @@ def generate_demo_frame(cap: cv2.VideoCapture, frame_number: int) -> Optional[np
 
 
 def get_webcam_capture() -> Optional[cv2.VideoCapture]:
-    """Get or initialize the webcam capture."""
+    """Get or initialize video capture from configured source."""
     global webcam_capture
     
     if webcam_capture is None or not webcam_capture.isOpened():
-        print(f"[VIDEO API] Attempting to open webcam...")
-        # Try to open webcam (1 is the external USB webcam)
-        webcam_capture = cv2.VideoCapture(1)
+        video_source = settings.VIDEO_SOURCE
+        print(f"[VIDEO API] Attempting to open video source: {video_source}")
         
-        if webcam_capture.isOpened():
-            print(f"[VIDEO API] Webcam opened successfully on index 1")
-            # Set camera properties for better performance
-            webcam_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            webcam_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            webcam_capture.set(cv2.CAP_PROP_FPS, 30)
-        else:
-            print(f"[VIDEO API] Failed to open webcam on index 1, trying index 0...")
-            webcam_capture = cv2.VideoCapture(0)
+        # Check if video source is a number (camera index) or URL
+        try:
+            # Try to parse as integer (camera index)
+            camera_index = int(video_source)
+            webcam_capture = cv2.VideoCapture(camera_index)
+            
             if webcam_capture.isOpened():
-                print(f"[VIDEO API] Webcam opened successfully on index 0")
+                print(f"[VIDEO API] Camera opened successfully on index {camera_index}")
+                # Set camera properties for better performance
                 webcam_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 webcam_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                 webcam_capture.set(cv2.CAP_PROP_FPS, 30)
             else:
-                print(f"[VIDEO API] Failed to open webcam on both indices")
+                print(f"[VIDEO API] Failed to open camera on index {camera_index}")
+                webcam_capture = None
+        except ValueError:
+            # Not an integer, treat as URL
+            webcam_capture = cv2.VideoCapture(video_source)
+            
+            if webcam_capture.isOpened():
+                print(f"[VIDEO API] Remote video stream opened successfully: {video_source}")
+            else:
+                print(f"[VIDEO API] Failed to open remote video stream: {video_source}")
                 webcam_capture = None
     
     return webcam_capture if webcam_capture and webcam_capture.isOpened() else None

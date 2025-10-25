@@ -123,7 +123,7 @@ class FrameProcessor:
                 result = response.json()
                 
                 # Broadcast AI results via WebSocket for real-time overlays
-                await manager.broadcast_message({
+                await manager.broadcast({
                     "type": "ai_detections",
                     "timestamp": timestamp,
                     "data": {
@@ -159,20 +159,29 @@ class FrameProcessor:
             # Import here to avoid circular dependency
             from app.workers.event_processor import event_processor
             
-            event_type = suggestion.get("type")
             confidence = suggestion.get("confidence", 0.0)
             
             # Only create events for high-confidence suggestions
             if confidence > 0.7:
-                await event_processor.submit_event({
-                    "type": event_type,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "data": {
-                        **suggestion.get("data", {}),
-                        "confidence": confidence,
-                        "source": "ai_detection"
-                    }
-                })
+                # Format detection data for event processor
+                detection_data = {
+                    "detections": suggestion.get("detections", []),
+                    "actions": suggestion.get("actions", []),
+                    "objects": suggestion.get("objects", []),
+                    "confidence": confidence,
+                    "source": "ai_detection"
+                }
+                
+                # Use a default user_id (in production, this should come from context)
+                # TODO: Get actual user_id from session/context
+                user_id = "default_user"
+                video_ts_ms = int(timestamp)
+                
+                await event_processor.process_detection(
+                    detection=detection_data,
+                    user_id=user_id,
+                    video_ts_ms=video_ts_ms
+                )
                 
         except Exception as e:
             print(f"[FrameProcessor] Error creating event: {e}")
