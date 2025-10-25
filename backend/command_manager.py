@@ -3,12 +3,12 @@ import time
 import uuid
 from typing import Dict, Optional
 
-from status_store import StatusStore
-from model_runner import ModelRunner
-from adapters.arm_adapter import ArmAdapter
-from adapters.servo_adapter import ServoAdapter
-from adapters.tts import TTSSpeaker
-from safety import SafetyManager
+from backend.status_store import StatusStore
+from backend.model_runner import ModelRunner
+from backend.adapters.arm_adapter import ArmAdapter
+from backend.adapters.servo_adapter import ServoAdapter
+from backend.adapters.tts import TTSSpeaker
+from backend.safety import SafetyManager
 
 
 class BusyError(Exception):
