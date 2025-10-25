@@ -94,26 +94,37 @@ class ModelRunner:
             yield from self._infer_scripted(instruction)
 
     def _infer_scripted(self, instruction: str) -> Iterable[Dict]:
-        """Scripted demo mode."""
+        """Scripted demo mode with visible movements (values in degrees)."""
         if instruction == "get the treat":
             phases = [
-                ("detect", [0.1, 0.1, 0.0, 0.0, 0.0, 0.0], 0.7),
-                ("approach", [0.2, 0.1, 0.0, 0.1, 0.0, 0.0], 0.75),
-                ("grasp", [0.3, 0.1, 0.0, 0.1, 0.0, 0.0], 0.8),
-                ("lift", [0.2, 0.2, 0.0, 0.1, 0.0, 0.0], 0.82),
-                ("drop", [0.1, 0.2, 0.0, 0.1, 0.0, 0.0], 0.84),
+                ("detect_1", [0.0, 5.0, 0.0, 0.0, 0.0, 20.0], 0.7),
+                ("detect_2", [0.0, 10.0, 5.0, 0.0, 0.0, 20.0], 0.72),
+                ("approach_1", [10.0, 15.0, 8.0, -5.0, 0.0, 20.0], 0.75),
+                ("approach_2", [15.0, 20.0, 10.0, -10.0, 0.0, 20.0], 0.77),
+                ("grasp_1", [15.0, 22.0, 12.0, -12.0, 0.0, 35.0], 0.78),
+                ("grasp_2", [15.0, 25.0, 15.0, -15.0, 0.0, 50.0], 0.8),
+                ("lift_1", [12.0, 20.0, 17.0, -12.0, 0.0, 50.0], 0.81),
+                ("lift_2", [10.0, 15.0, 20.0, -10.0, 0.0, 50.0], 0.82),
+                ("drop_1", [7.0, 12.0, 15.0, -5.0, 0.0, 35.0], 0.83),
+                ("drop_2", [5.0, 10.0, 10.0, 0.0, 0.0, 20.0], 0.84),
             ]
-        else:
+        else:  # "pick up the ball" or default
             phases = [
-                ("detect", [0.0, 0.1, 0.0, 0.0, 0.0, 0.0], 0.7),
-                ("approach", [0.1, 0.2, 0.0, 0.0, 0.0, 0.0], 0.75),
-                ("grasp", [0.2, 0.3, 0.0, 0.1, 0.0, 0.0], 0.8),
-                ("lift", [0.2, 0.2, 0.1, 0.1, 0.0, 0.0], 0.82),
-                ("ready_to_throw", [0.2, 0.2, 0.2, 0.1, 0.0, 0.0], 0.85),
+                ("detect_1", [0.0, 5.0, 0.0, 0.0, 0.0, 20.0], 0.7),
+                ("detect_2", [0.0, 10.0, 5.0, 0.0, 0.0, 20.0], 0.72),
+                ("approach_1", [10.0, 15.0, 10.0, -5.0, 2.0, 20.0], 0.74),
+                ("approach_2", [15.0, 20.0, 12.0, -8.0, 4.0, 20.0], 0.76),
+                ("approach_3", [20.0, 25.0, 15.0, -10.0, 5.0, 20.0], 0.78),
+                ("grasp_1", [20.0, 27.0, 17.0, -12.0, 5.0, 35.0], 0.79),
+                ("grasp_2", [20.0, 30.0, 20.0, -15.0, 5.0, 50.0], 0.8),
+                ("lift_1", [17.0, 25.0, 22.0, -12.0, 2.0, 50.0], 0.81),
+                ("lift_2", [15.0, 20.0, 25.0, -10.0, 0.0, 50.0], 0.82),
+                ("ready_1", [12.0, 17.0, 27.0, -7.0, 0.0, 50.0], 0.84),
+                ("ready_2", [10.0, 15.0, 30.0, -5.0, 0.0, 50.0], 0.85),
             ]
         for phase, targets, conf in phases:
             yield {"phase": phase, "targets": targets, "confidence": conf}
-            time.sleep(1.0 / max(1, self.rate_hz))
+            time.sleep(0.5)  # 0.5 second per step for smoother, slower motion
 
     def _infer_smolvla(self, instruction: str) -> Iterable[Dict]:
         """Real-time VLA policy inference from camera frames."""

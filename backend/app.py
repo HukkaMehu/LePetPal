@@ -5,6 +5,7 @@ import uuid
 from typing import Optional
 
 from flask import Flask, Response, jsonify, request
+from flask_cors import CORS
 from dotenv import load_dotenv
 
 from backend.video import CameraCapture, mjpeg_stream
@@ -24,6 +25,15 @@ def create_app() -> Flask:
     load_dotenv()
 
     app = Flask(__name__)
+    
+    # Enable CORS for public API access (ngrok/cloudflare)
+    CORS(app, resources={
+        r"/*": {
+            "origins": "*",  # Allow all origins (for hackathon/demo)
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type"]
+        }
+    })
 
     # Config
     port = int(os.getenv("PORT", 5000))
@@ -70,6 +80,12 @@ def create_app() -> Flask:
         cam_param = request.args.get("camera")
         w_param = request.args.get("width")
         h_param = request.args.get("height")
+        
+        # Performance optimization parameters
+        quality = int(request.args.get("quality", "50"))  # JPEG quality (1-100)
+        scale = float(request.args.get("scale", "0.5"))   # Scale factor (0.1-1.0)
+        fps = int(request.args.get("fps", "10"))          # Target FPS (1-30)
+        
         try:
             new_w = int(w_param) if w_param else None
             new_h = int(h_param) if h_param else None
@@ -83,7 +99,11 @@ def create_app() -> Flask:
             target_w = new_w if new_w is not None else getattr(camera, 'width', 1280)
             target_h = new_h if new_h is not None else getattr(camera, 'height', 720)
             camera.switch_camera(target_idx, target_w, target_h)
-        return Response(mjpeg_stream(camera, overlays=overlays), mimetype="multipart/x-mixed-replace; boundary=frame")
+        
+        return Response(
+            mjpeg_stream(camera, overlays=overlays, quality=quality, scale=scale, fps=fps), 
+            mimetype="multipart/x-mixed-replace; boundary=frame"
+        )
 
     @app.post("/command")
     def command():

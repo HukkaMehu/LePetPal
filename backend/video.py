@@ -77,18 +77,49 @@ class CameraCapture:
         return True, frame
 
 
-def mjpeg_stream(camera: CameraCapture, overlays: bool = True) -> Generator[bytes, None, None]:
+def mjpeg_stream(camera: CameraCapture, overlays: bool = True, quality: int = 50, scale: float = 0.5, fps: int = 10) -> Generator[bytes, None, None]:
+    """
+    Optimized MJPEG stream for internet streaming.
+    
+    Args:
+        camera: Camera capture object
+        overlays: Show timestamp overlay
+        quality: JPEG quality (1-100, lower = smaller file, faster)
+        scale: Scale factor (0.5 = half size, faster)
+        fps: Target frames per second (lower = less bandwidth)
+    """
     boundary = b"--frame"
+    frame_delay = 1.0 / fps
+    last_frame_time = 0
+    
     while True:
+        # Frame rate limiting
+        current_time = time.time()
+        if current_time - last_frame_time < frame_delay:
+            time.sleep(0.01)
+            continue
+        last_frame_time = current_time
+        
         ok, frame = camera.read()
         if not ok:
             time.sleep(0.05)
             continue
+        
+        # Resize frame for lower bandwidth
+        if scale != 1.0:
+            new_width = int(frame.shape[1] * scale)
+            new_height = int(frame.shape[0] * scale)
+            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        
         if overlays:
             ts = time.strftime("%H:%M:%S")
-            cv2.putText(frame, f"{ts}", (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        ret, jpeg = cv2.imencode('.jpg', frame)
+            cv2.putText(frame, f"{ts}", (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # Encode with lower quality for faster transmission
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+        ret, jpeg = cv2.imencode('.jpg', frame, encode_params)
         if not ret:
             continue
+        
         buf = jpeg.tobytes()
         yield boundary + b"\r\n" + b"Content-Type: image/jpeg\r\n\r\n" + buf + b"\r\n"
