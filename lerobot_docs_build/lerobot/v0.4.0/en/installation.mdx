@@ -1,0 +1,172 @@
+<script lang="ts">
+import {onMount} from "svelte";
+import Tip from "$lib/Tip.svelte";
+import Youtube from "$lib/Youtube.svelte";
+import Docstring from "$lib/Docstring.svelte";
+import CodeBlock from "$lib/CodeBlock.svelte";
+import CodeBlockFw from "$lib/CodeBlockFw.svelte";
+import DocNotebookDropdown from "$lib/DocNotebookDropdown.svelte";
+import CourseFloatingBanner from "$lib/CourseFloatingBanner.svelte";
+import IconCopyLink from "$lib/IconCopyLink.svelte";
+import FrameworkContent from "$lib/FrameworkContent.svelte";
+import Markdown from "$lib/Markdown.svelte";
+import Question from "$lib/Question.svelte";
+import FrameworkSwitchCourse from "$lib/FrameworkSwitchCourse.svelte";
+import InferenceApi from "$lib/InferenceApi.svelte";
+import TokenizersLanguageContent from "$lib/TokenizersLanguageContent.svelte";
+import ExampleCodeBlock from "$lib/ExampleCodeBlock.svelte";
+import Added from "$lib/Added.svelte";
+import Changed from "$lib/Changed.svelte";
+import Deprecated from "$lib/Deprecated.svelte";
+import PipelineIcon from "$lib/PipelineIcon.svelte";
+import PipelineTag from "$lib/PipelineTag.svelte";
+import Heading from "$lib/Heading.svelte";
+import HfOptions from "$lib/HfOptions.svelte";
+import HfOption from "$lib/HfOption.svelte";
+let fw: "pt" | "tf" = "pt";
+onMount(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    fw = urlParams.get("fw") || "pt";
+});
+</script>
+<svelte:head>
+  <meta name="hf:doc:metadata" content={metadata} >
+</svelte:head>
+
+<!--HF DOCBUILD BODY START-->
+
+HF_DOC_BODY_START
+
+# Installation
+
+## Install [`miniforge`](https://conda-forge.org/download/)
+
+```bash
+wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
+
+## Environment Setup
+
+Create a virtual environment with Python 3.10, using conda:
+
+```bash
+conda create -y -n lerobot python=3.10
+```
+
+Then activate your conda environment, you have to do this each time you open a shell to use lerobot:
+
+```bash
+conda activate lerobot
+```
+
+When using `conda`, install `ffmpeg` in your environment:
+
+```bash
+conda install ffmpeg -c conda-forge
+```
+
+> [!TIP]
+> This usually installs `ffmpeg 7.X` for your platform compiled with the `libsvtav1` encoder. If `libsvtav1` is not supported (check supported encoders with `ffmpeg -encoders`), you can:
+>
+> - _[On any platform]_ Explicitly install `ffmpeg 7.X` using:
+>
+> ```bash
+> conda install ffmpeg=7.1.1 -c conda-forge
+> ```
+>
+> - _[On Linux only]_ If you want to bring your own ffmpeg: Install [ffmpeg build dependencies](https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu#GettheDependencies) and [compile ffmpeg from source with libsvtav1](https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu#libsvtav1), and make sure you use the corresponding ffmpeg binary to your install with `which ffmpeg`.
+
+## Install LeRobot 🤗
+
+### From Source
+
+First, clone the repository and navigate into the directory:
+
+```bash
+git clone https://github.com/huggingface/lerobot.git
+cd lerobot
+```
+
+Then, install the library in editable mode. This is useful if you plan to contribute to the code.
+
+```bash
+pip install -e .
+```
+
+### Installation from PyPI
+
+**Core Library:**
+Install the base package with:
+
+```bash
+pip install lerobot
+```
+
+_This installs only the default dependencies._
+
+**Extra Features:**
+To install additional functionality, use one of the following:
+
+```bash
+pip install 'lerobot[all]'          # All available features
+pip install 'lerobot[aloha,pusht]'  # Specific features (Aloha & Pusht)
+pip install 'lerobot[feetech]'      # Feetech motor support
+```
+
+_Replace `[...]` with your desired features._
+
+**Available Tags:**
+For a full list of optional dependencies, see:
+https://pypi.org/project/lerobot/
+
+> [!NOTE]
+> For lerobot 0.4.0, if you want to install libero or pi, you will have to do: `pip install "lerobot[pi,libero]@git+https://github.com/huggingface/lerobot.git"`
+
+### Troubleshooting
+
+If you encounter build errors, you may need to install additional dependencies: `cmake`, `build-essential`, and `ffmpeg libs`.
+To install these for linux run:
+
+```bash
+sudo apt-get install cmake build-essential python-dev pkg-config libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev pkg-config
+```
+
+For other systems, see: [Compiling PyAV](https://pyav.org/docs/develop/overview/installation.html#bring-your-own-ffmpeg)
+
+## Optional dependencies
+
+LeRobot provides optional extras for specific functionalities. Multiple extras can be combined (e.g., `.[aloha,feetech]`). For all available extras, refer to `pyproject.toml`.
+
+### Simulations
+
+Install environment packages: `aloha` ([gym-aloha](https://github.com/huggingface/gym-aloha)), or `pusht` ([gym-pusht](https://github.com/huggingface/gym-pusht))
+Example:
+
+```bash
+pip install -e ".[aloha]" # or "[pusht]" for example
+```
+
+### Motor Control
+
+For Koch v1.1 install the Dynamixel SDK, for SO100/SO101/Moss install the Feetech SDK.
+
+```bash
+pip install -e ".[feetech]" # or "[dynamixel]" for example
+```
+
+### Experiment Tracking
+
+To use [Weights and Biases](https://docs.wandb.ai/quickstart) for experiment tracking, log in with
+
+```bash
+wandb login
+```
+
+You can now assemble your robot if it's not ready yet, look for your robot type on the left. Then follow the link below to use Lerobot with your robot.
+
+
+<!--HF DOCBUILD BODY END-->
+
+HF_DOC_BODY_END
+

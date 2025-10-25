@@ -1,14 +1,14 @@
-import time
+
 import os
-import importlib
-from typing import Iterable, List, Dict, Optional
+import time
+from typing import List, Dict
 import numpy as np
 
-# Attempt to import the real hardware driver
 try:
-    from lerobot.real_world.interbotix_sdk_driver import InterbotixSDKDriver
+    from lerobot.robots.so101_follower.so101_follower import SO101Follower, SO101FollowerConfig
 except ImportError:
-    InterbotixSDKDriver = None
+    SO101Follower = None
+    SO101FollowerConfig = None
 
 class ArmAdapter:
     """Adapter for LeRobot SO-101 follower arm."""
@@ -16,113 +16,97 @@ class ArmAdapter:
         self._joints: List[float] = [0.0] * 6
         self._connected = False
         self._use_hardware = use_hardware
-        self._driver = None  # real driver instance when available
-        # Dynamic driver config via env
-        self._drv_module = os.getenv("ARM_DRIVER_MODULE", "")
-        self._drv_class = os.getenv("ARM_DRIVER_CLASS", "")
-        self._drv_port = os.getenv("ARM_PORT", "")
-        self._drv_baud = int(os.getenv("ARM_BAUD", "0") or 0)
-        self._joint_units = os.getenv("JOINT_UNITS", "rad")  # 'rad' or 'deg'
+        self._driver: SO101Follower | None = None
 
     def connect(self) -> bool:
-        if not self._use_hardware:
+        if not self._use_hardware or SO101Follower is None:
+            print("INFO: ArmAdapter running in MOCK mode.")
             self._connected = True
             return True
-        # Dynamic import based on env configuration
+
         try:
-            if self._drv_module and self._drv_class:
-                mod = importlib.import_module(self._drv_module)
-                cls = getattr(mod, self._drv_class)
-                kwargs = {}
-                if self._drv_port:
-                    kwargs["port"] = self._drv_port
-                if self._drv_baud:
-                    kwargs["baud"] = self._drv_baud
-                self._driver = cls(**kwargs)
-                # optional explicit connect()
-                if hasattr(self._driver, "connect"):
-                    self._driver.connect()
-                self._connected = True
-                return True
-        except Exception:
-            # Fall back to mock if any failure
-            self._driver = None
+            port = os.getenv("ARM_PORT", "COM7")
+            print(f"INFO: ArmAdapter connecting to hardware on {port}...")
+            robot_config = SO101FollowerConfig(port=port)
+            self._driver = SO101Follower(robot_config)
+            self._driver.connect()
+            self._connected = True
+            print("INFO: ArmAdapter successfully connected to hardware.")
+            self.home()
+            return True
+        except Exception as e:
+            print(f"ERROR: Failed to connect to arm hardware: {e}")
             self._connected = False
             return False
-        # If no driver info provided, remain disconnected in hardware mode
-        self._connected = False
-        return False
 
     def get_joint_angles(self) -> List[float]:
         if self._use_hardware and self._driver is not None:
-            try:
-                for name in ("get_joint_angles", "read_joints", "get_joints", "get_positions"):
-                    if hasattr(self._driver, name):
-                        vals = getattr(self._driver, name)()
-                        arr = list(vals)
-                        if self._joint_units == "deg":
-                            # convert degrees to radians conservatively
-                            arr = [v * 3.141592653589793 / 180.0 for v in arr]
-                        self._joints = arr
-                        return list(self._joints)
-            except Exception:
-                pass
+            joint_positions, _ = self._driver.get_joint_states()
+            self._joints = joint_positions.tolist()
         return list(self._joints)
 
     def send_joint_targets(self, chunk: Dict) -> None:
-        """Accepts a chunk with optional 'targets' list[6].
-        In real impl, stream targets at fixed rate.
-        """
+        """Accepts a chunk with 'targets' and streams them to the arm."""
         targets = chunk.get("targets")
         if targets and len(targets) == 6:
             self._joints = list(targets)
             if self._use_hardware and self._driver is not None:
-                try:
-                    out = list(targets)
-                    if self._joint_units == "deg":
-                        out = [v * 180.0 / 3.141592653589793 for v in out]
-                    for name in ("send_joint_targets", "send_joints", "set_positions", "command_joints"):
-                        if hasattr(self._driver, name):
-                            getattr(self._driver, name)(out)
-                            break
-                except Exception:
-                    pass
-        time.sleep(0.005)
+                action = {
+                    "shoulder_pan.pos": float(targets[0]),
+                    "shoulder_lift.pos": float(targets[1]),
+                    "elbow_flex.pos": float(targets[2]),
+                    "wrist_flex.pos": float(targets[3]),
+                    "wrist_roll.pos": float(targets[4]),
+                    "gripper.pos": float(targets[5]),
+                }
+                self._driver.send_action(action)
 
     def home(self) -> None:
-        # Move to neutral pose (stub)
-        self._joints = [0.0] * 6
+        """Move to a neutral, safe home pose."""
+        home_pose = [0.0] * 6
         if self._use_hardware and self._driver is not None:
-            try:
-                for name in ("home", "go_home", "move_home"):
-                    if hasattr(self._driver, name):
-                        getattr(self._driver, name)()
-                        break
-            except Exception:
-                pass
-        time.sleep(0.3)
+            action = {
+                "shoulder_pan.pos": 0.0,
+                "shoulder_lift.pos": 0.0,
+                "elbow_flex.pos": 0.0,
+                "wrist_flex.pos": 0.0,
+                "wrist_roll.pos": 0.0,
+                "gripper.pos": 20.0,
+            }
+            self._driver.send_action(action)
+            time.sleep(1.5)
+        self._joints = home_pose
 
     def stop(self) -> None:
-        # Emergency stop (stub)
         if self._use_hardware and self._driver is not None:
-            try:
-                for name in ("stop", "estop", "halt"):
-                    if hasattr(self._driver, name):
-                        getattr(self._driver, name)()
-                        break
-            except Exception:
-                pass
+            self._driver.disconnect()
 
     def throw_macro(self) -> None:
-        # This should be a carefully tuned sequence of joint angles
         if self._use_hardware and self._driver is not None:
-            # Example: A quick, hard-coded throw motion
             ready_pose = self.get_joint_angles()
-            throw_pose_1 = ready_pose.copy()
-            throw_pose_1[1] -= 0.5 # Example adjustment
+            throw_pose_1 = np.array(ready_pose.copy())
+            throw_pose_1[1] -= 0.5
             throw_pose_2 = throw_pose_1.copy()
-            throw_pose_2[2] += 1.0 # Example adjustment
+            throw_pose_2[2] += 1.0
 
-            self._driver.set_joint_positions(np.array(throw_pose_1), blocking=True, moving_time=0.2)
-            self._driver.set_joint_positions(np.array(throw_pose_2), blocking=True, moving_time=0.1)
+            action1 = {
+                "shoulder_pan.pos": float(throw_pose_1[0]),
+                "shoulder_lift.pos": float(throw_pose_1[1]),
+                "elbow_flex.pos": float(throw_pose_1[2]),
+                "wrist_flex.pos": float(throw_pose_1[3]),
+                "wrist_roll.pos": float(throw_pose_1[4]),
+                "gripper.pos": float(throw_pose_1[5]),
+            }
+            action2 = {
+                "shoulder_pan.pos": float(throw_pose_2[0]),
+                "shoulder_lift.pos": float(throw_pose_2[1]),
+                "elbow_flex.pos": float(throw_pose_2[2]),
+                "wrist_flex.pos": float(throw_pose_2[3]),
+                "wrist_roll.pos": float(throw_pose_2[4]),
+                "gripper.pos": float(throw_pose_2[5]),
+            }
+            self._driver.send_action(action1)
+            time.sleep(0.2)
+            self._driver.send_action(action2)
+            time.sleep(0.1)
         time.sleep(0.5)
