@@ -7,14 +7,14 @@ from typing import Optional
 from flask import Flask, Response, jsonify, request
 from dotenv import load_dotenv
 
-from backend.video import CameraCapture, mjpeg_stream
-from backend.status_store import StatusStore
-from backend.command_manager import CommandManager, BusyError
-from backend.adapters.arm_adapter import ArmAdapter
-from backend.adapters.servo_adapter import ServoAdapter
-from backend.adapters.tts import TTSSpeaker
-from backend.model_runner import ModelRunner
-from backend.safety import SafetyManager
+from video import CameraCapture, mjpeg_stream
+from status_store import StatusStore
+from command_manager import CommandManager, BusyError
+from adapters.arm_adapter import ArmAdapter
+from adapters.servo_adapter import ServoAdapter
+from adapters.tts import TTSSpeaker
+from model_runner import ModelRunner
+from safety import SafetyManager
 
 
 ALLOWED_PROMPTS = {"pick up the ball", "get the treat", "go home"}

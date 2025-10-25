@@ -1,5 +1,8 @@
-Flask==3.0.0
-python-dotenv==1.0.1
-opencv-python==4.10.0.84
+Flask
+python-dotenv
+opencv-python
+lerobot
+torch
+numpy
 numpy==1.26.4
 Pillow==10.4.0

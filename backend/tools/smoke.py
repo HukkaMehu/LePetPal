@@ -3,11 +3,12 @@ import requests
 import sys
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:5000"
+PROMPT = sys.argv[2] if len(sys.argv) > 2 else "pick up the ball"
 
 print("health:", requests.get(f"{BASE}/health").json())
 
 # command
-r = requests.post(f"{BASE}/command", json={"prompt": "pick up the ball", "options": {}})
+r = requests.post(f"{BASE}/command", json={"prompt": PROMPT, "options": {}})
 print("command:", r.status_code, r.json())
 req_id = r.json().get("request_id")
 
