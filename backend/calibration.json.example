@@ -1,0 +1,25 @@
+{
+  "camera": {
+    "roi": {
+      "x": 100,
+      "y": 50,
+      "width": 800,
+      "height": 600
+    }
+  },
+  "zones": {
+    "bowl": {
+      "x": 640,
+      "y": 360,
+      "radius": 100
+    },
+    "treat_dispenser": {
+      "x": 200,
+      "y": 100
+    }
+  },
+  "arm": {
+    "home_position": [0.0, -1.57, 1.57, 0.0, 0.0, 0.0],
+    "ready_to_throw_position": [0.5, -0.8, 1.2, 0.0, 0.0, 0.0]
+  }
+}

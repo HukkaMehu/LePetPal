@@ -1,0 +1,27 @@
+# LePetPal Backend Dependencies
+
+# Web Framework
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Environment Configuration
+python-dotenv==1.0.0
+
+# Computer Vision
+opencv-python==4.8.1.78
+numpy==1.24.3
+
+# Vision Models (optional - install based on your model choice)
+# ultralytics==8.0.200  # For YOLOv8
+# torch==2.1.0  # For PyTorch-based models
+# torchvision==0.16.0
+
+# Hardware Control (install when using real hardware)
+# RPi.GPIO==0.7.1  # For Raspberry Pi GPIO (servo control)
+# lerobot  # For LeRobot-compatible arms
+
+# Text-to-Speech
+pyttsx3==2.90
+
+# Utilities
+Pillow==10.1.0  # Image processing

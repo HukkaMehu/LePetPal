@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "invalid",
+    "http": 400,
+    "message": "Invalid prompt"
+  }
+}
