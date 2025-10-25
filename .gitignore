@@ -39,6 +39,7 @@ dist/
 build/
 .next/
 out/
+package-lock.json
 
 # IDEs
 .vscode/

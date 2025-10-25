@@ -2,7 +2,7 @@
 Clips API endpoints for creating and managing video clips.
 Requirements: 4.2, 6.2
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -15,7 +15,7 @@ from app.models.clip import Clip
 from app.models.user import User
 from app.core.storage import storage_service
 from app.core.events import broadcast_clip_saved
-from app.workers.clip_processor import process_clip_task
+from app.workers.clip_processor import process_clip_task, process_clip_sync
 
 router = APIRouter(prefix="/api/clips", tags=["clips"])
 
@@ -49,6 +49,7 @@ class ClipResponse(BaseModel):
 @router.post("", response_model=ClipResponse, status_code=202)
 async def create_clip(
     clip_request: ClipCreateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -95,8 +96,10 @@ async def create_clip(
         db.commit()
         db.refresh(db_clip)
         
-        # Queue background job for clip processing
-        task = process_clip_task.delay(
+        # Process clip in background using FastAPI BackgroundTasks
+        # This runs in the same process and has access to video buffer
+        background_tasks.add_task(
+            process_clip_sync,
             clip_id=str(db_clip.id),
             user_id=str(user_id),
             start_ts=clip_request.start_ts.isoformat(),

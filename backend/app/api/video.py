@@ -4,6 +4,7 @@ import json
 import uuid
 from typing import AsyncGenerator, Dict, Optional
 from pathlib import Path
+from datetime import datetime
 from fastapi import APIRouter, Response, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,6 +13,8 @@ import numpy as np
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
 from aiortc.contrib.media import MediaRelay
 from av import VideoFrame
+from app.core.video_buffer import video_buffer
+from app.workers.frame_processor import frame_processor
 
 router = APIRouter(prefix="/video", tags=["video"])
 
@@ -203,9 +206,16 @@ async def generate_mjpeg_frames(demo_mode: bool = False, use_webcam: bool = True
             if frame is None:
                 frame = generate_test_pattern(frame_number=frame_number)
             
+            # Add frame to buffer for clip extraction
+            video_buffer.add_frame(frame, datetime.utcnow())
+            
             # Encode frame as JPEG
             _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             frame_bytes = buffer.tobytes()
+            
+            # Submit frame to AI processor (non-blocking)
+            timestamp_ms = time.time() * 1000
+            await frame_processor.submit_frame(frame_bytes, timestamp_ms)
             
             # Yield frame in multipart format
             yield (
@@ -444,6 +454,60 @@ async def get_ice_candidates(connection_id: str):
         generate_ice_candidates(connection_id),
         media_type="text/event-stream"
     )
+
+
+@router.get("/buffer/status")
+async def get_buffer_status():
+    """
+    Get video buffer status.
+    Shows how many frames are buffered and the time range available.
+    """
+    try:
+        info = video_buffer.get_buffer_info()
+        return info
+    except Exception as e:
+        # Return minimal info if buffer check fails
+        return {
+            "frame_count": 0,
+            "duration_seconds": 0,
+            "oldest_frame": None,
+            "newest_frame": None,
+            "error": str(e)
+        }
+
+
+@router.get("/buffer/frames")
+async def get_buffer_frames(
+    start_time: str = Query(..., description="Start time in ISO format"),
+    end_time: str = Query(..., description="End time in ISO format")
+):
+    """
+    Get frames from the buffer for a specific time range.
+    Returns frames as a list of base64-encoded images with timestamps.
+    """
+    from datetime import datetime
+    import base64
+    import cv2
+    
+    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+    
+    frames = video_buffer.get_frames(start_dt, end_dt)
+    
+    # Convert frames to base64 for transmission
+    result = []
+    for timestamp, frame in frames:
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        frame_b64 = base64.b64encode(buffer).decode('utf-8')
+        result.append({
+            'timestamp': timestamp.isoformat(),
+            'data': frame_b64
+        })
+    
+    return {
+        'frames': result,
+        'count': len(result)
+    }
 
 
 def cleanup_webcam():

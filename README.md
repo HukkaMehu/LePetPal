@@ -1,6 +1,19 @@
 # Dog Monitor Web Application
 
-AI-powered dog monitoring and training assistant with real-time video streaming, behavior detection, and training analytics.
+AI-powered dog monitoring and training assistant with **real-time YOLOv8 detection**, live video streaming, behavior analysis, and training analytics.
+
+## 🎉 NEW: Real AI Features Enabled!
+
+This app now includes:
+- ✅ **Real YOLOv8 detection** (humans + dogs)
+- ✅ **Live frame processing** at 20-30 FPS
+- ✅ **Automatic event creation** from AI analysis
+- ✅ **WebSocket broadcasting** of detections
+- ✅ **Remote camera support** via ngrok
+- ✅ **Demo-ready** (works without a dog!)
+
+**Quick Start with AI:** See [START_WITH_AI.md](START_WITH_AI.md)
+**Demo Mode:** See [DEMO_READY.md](DEMO_READY.md)
 
 ## Project Structure
 

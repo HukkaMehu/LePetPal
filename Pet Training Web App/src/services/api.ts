@@ -19,6 +19,7 @@ import {
   ModelSwitchRequest,
   APIError,
 } from '../types';
+import { adaptRoutineToBackend } from './adapters';
 import {
   BackendEventsResponse,
   BackendRoutinesResponse,
@@ -227,7 +228,23 @@ export class APIClient {
       // Failed to parse error response
     }
 
-    const message = errorData?.detail || response.statusText || 'An error occurred';
+    // Handle different error formats
+    let message: string;
+    
+    if (errorData?.detail) {
+      // FastAPI validation errors return detail as an array
+      if (Array.isArray(errorData.detail)) {
+        message = errorData.detail
+          .map((err: any) => `${err.loc?.join('.') || 'field'}: ${err.msg}`)
+          .join(', ');
+      } else if (typeof errorData.detail === 'string') {
+        message = errorData.detail;
+      } else {
+        message = JSON.stringify(errorData.detail);
+      }
+    } else {
+      message = response.statusText || 'An error occurred';
+    }
     
     return new APIError(response.status, message, errorData);
   }
@@ -270,9 +287,10 @@ export class APIClient {
    * Create a new routine
    */
   async createRoutine(routine: RoutineCreate): Promise<Routine> {
+    const backendRoutine = adaptRoutineToBackend(routine);
     return this.request<Routine>('/routines', {
       method: 'POST',
-      body: JSON.stringify(routine),
+      body: JSON.stringify(backendRoutine),
     });
   }
 
@@ -280,9 +298,10 @@ export class APIClient {
    * Update an existing routine
    */
   async updateRoutine(id: string, routine: RoutineUpdate): Promise<Routine> {
+    const backendRoutine = adaptRoutineToBackend(routine);
     return this.request<Routine>(`/routines/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(routine),
+      body: JSON.stringify(backendRoutine),
     });
   }
 
@@ -380,6 +399,24 @@ export class APIClient {
     return this.request<any>('/clips', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Delete a video clip
+   */
+  async deleteClip(id: string): Promise<void> {
+    return this.request<void>(`/clips/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Delete a snapshot
+   */
+  async deleteSnapshot(id: string): Promise<void> {
+    return this.request<void>(`/snapshots/${id}`, {
+      method: 'DELETE',
     });
   }
 

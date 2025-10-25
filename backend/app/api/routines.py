@@ -16,6 +16,9 @@ from app.workers.routine_scheduler import routine_scheduler
 
 router = APIRouter(prefix="/api/routines", tags=["routines"])
 
+# Default user ID for single-user setup
+DEFAULT_USER_ID = UUID("e6bca6a4-5e3b-4877-837b-750a55f1e527")
+
 
 class RoutineStep(BaseModel):
     """Model for a single routine step."""
@@ -129,8 +132,8 @@ async def create_routine(
     Requirements: 8.2, 8.3
     """
     try:
-        # TODO: Replace with actual authenticated user_id
-        user_id = uuid4()  # Placeholder
+        # Use default user ID for single-user setup
+        user_id = DEFAULT_USER_ID
         
         # Convert steps to dict format for JSONB storage
         steps_data = [step.dict() for step in routine.steps]

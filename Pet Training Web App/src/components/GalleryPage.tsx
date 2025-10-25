@@ -10,6 +10,7 @@ import { formatDistanceToNow, format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useMedia } from '../hooks/useMedia';
 import { GallerySkeleton } from './LoadingStates';
+import { apiClient } from '../services/api';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +29,7 @@ export default function GalleryPage() {
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState<string>('');
 
-  const { media, loading, error, total, hasMore, loadMore } = useMedia({ 
+  const { media, loading, error, total, hasMore, loadMore, refetch } = useMedia({ 
     limit: 20,
     type: filterType,
     startDate: filterStartDate,
@@ -36,10 +37,24 @@ export default function GalleryPage() {
     tags: filterTags.length > 0 ? filterTags : undefined,
   });
 
-  const handleDelete = (_item: MediaItem) => {
-    // TODO: Implement actual delete functionality with API call
-    toast.success('Deleted');
-    setSelectedItem(null);
+  const handleDelete = async (item: MediaItem) => {
+    try {
+      // Call the appropriate delete API based on media type
+      if (item.type === 'clip') {
+        await apiClient.deleteClip(item.id);
+      } else {
+        await apiClient.deleteSnapshot(item.id);
+      }
+      
+      toast.success('Deleted successfully');
+      setSelectedItem(null);
+      
+      // Refetch media to update the list
+      refetch();
+    } catch (error) {
+      console.error('Failed to delete media:', error);
+      toast.error('Failed to delete media');
+    }
   };
 
   const handleDateRangeFilter = (range: 'today' | 'week' | 'month' | 'all') => {
@@ -251,7 +266,7 @@ export default function GalleryPage() {
                       variant="secondary"
                       className="absolute top-2 right-2"
                     >
-                      {item.type === 'clip' ? `${item.duration}s` : 'Photo'}
+                      {item.type === 'clip' ? `${Math.round((item.duration || 0) / 1000)}s` : 'Photo'}
                     </Badge>
                   </div>
                   <div className="p-3 border-t border-border">
@@ -343,7 +358,7 @@ export default function GalleryPage() {
                       </Badge>
                       {selectedItem.type === 'clip' && selectedItem.duration && (
                         <Badge variant="outline">
-                          {selectedItem.duration}s
+                          {Math.round(selectedItem.duration / 1000)}s
                         </Badge>
                       )}
                     </div>

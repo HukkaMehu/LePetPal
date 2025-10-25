@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.websocket import manager
-from app.api import video, websocket, events, snapshots, clips, analytics, routines, commands, models, status
+from app.api import video, websocket, events, snapshots, clips, analytics, routines, commands, models, status, remote_video
 from app.workers.event_processor import event_processor
 from app.workers.metrics_aggregator import metrics_aggregator
 from app.workers.routine_scheduler import routine_scheduler
+from app.workers.frame_processor import frame_processor
 
 
 @asynccontextmanager
@@ -20,8 +21,11 @@ async def lifespan(app: FastAPI):
     await metrics_aggregator.start()
     # Startup: Start routine scheduler
     await routine_scheduler.start()
+    # Startup: Start frame processor for AI
+    await frame_processor.start()
     yield
     # Shutdown: Clean up resources
+    await frame_processor.stop()
     await event_processor.stop()
     await metrics_aggregator.stop()
     await routine_scheduler.stop()
@@ -48,6 +52,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(video.router)
+app.include_router(remote_video.router)
 app.include_router(websocket.router)
 app.include_router(events.router)
 app.include_router(snapshots.router)
@@ -65,3 +70,8 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+@app.get("/api/debug/frame-processor-stats")
+async def get_frame_processor_stats():
+    """Get frame processor statistics for debugging"""
+    return frame_processor.get_stats()

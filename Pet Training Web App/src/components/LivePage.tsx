@@ -27,7 +27,7 @@ import { apiClient } from '../services/api';
 
 export default function LivePage() {
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const { status, loading: statusLoading } = useSystemStatus();
 
   const handleAction = async (action: 'pet' | 'treat' | 'fetch') => {
@@ -56,8 +56,8 @@ export default function LivePage() {
     try {
       // Create snapshot with current timestamp
       const snapshotData = {
-        ts: new Date().toISOString(),
-        note: null,
+        timestamp: new Date(),
+        labels: [],
       };
       
       const response = await apiClient.createSnapshot(snapshotData);
@@ -73,16 +73,41 @@ export default function LivePage() {
     }
   };
 
+  const handleSaveLastSeconds = async (seconds: number = 30) => {
+    try {
+      const now = Date.now();
+      const startTime = now - (seconds * 1000);
+      
+      const startTimeUTC = new Date(startTime).toISOString();
+      await apiClient.createClip({
+        start_ts: startTimeUTC,
+        duration_ms: seconds * 1000,
+        labels: ['instant_replay'],
+      });
+      
+      toast.success('Clip saved', {
+        description: `Last ${seconds} seconds captured`,
+      });
+    } catch (error) {
+      console.error('Error saving clip:', error);
+      toast.error('Failed to save clip', {
+        description: error instanceof Error ? error.message : 'Network error occurred',
+      });
+    }
+  };
+
   const handleRecordingToggle = async () => {
     try {
       if (isRecording && recordingStartTime) {
         // Stop recording - calculate duration and create clip
-        const endTime = new Date();
-        const durationMs = endTime.getTime() - recordingStartTime.getTime();
+        const endTime = Date.now();
+        const durationMs = endTime - recordingStartTime;
         
         // Create clip with the recorded segment
+        // Convert timestamps to UTC for backend
+        const startTimeUTC = new Date(recordingStartTime).toISOString();
         const response = await apiClient.createClip({
-          start_ts: recordingStartTime.toISOString(),
+          start_ts: startTimeUTC,
           duration_ms: durationMs,
           labels: ['manual_recording'],
         });
@@ -94,9 +119,8 @@ export default function LivePage() {
           description: `Clip saved (${Math.round(durationMs / 1000)}s)`,
         });
       } else {
-        // Start recording - track start time
-        const startTime = new Date();
-        setRecordingStartTime(startTime);
+        // Start recording - use timestamp (milliseconds since epoch)
+        setRecordingStartTime(Date.now());
         setIsRecording(true);
         
         toast.info('Recording started', {
@@ -179,13 +203,13 @@ export default function LivePage() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant={isRecording ? 'destructive' : 'outline'}
+              variant="outline"
               size="sm"
-              onClick={handleRecordingToggle}
+              onClick={() => handleSaveLastSeconds(30)}
               disabled={!isConnected}
             >
-              <Circle className={`w-3 h-3 mr-2 ${isRecording ? 'fill-white' : ''}`} />
-              {isRecording ? 'Stop' : 'Record'}
+              <Circle className="w-3 h-3 mr-2" />
+              Save Last 30s
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -197,6 +221,10 @@ export default function LivePage() {
                 <DropdownMenuItem onClick={handleSnapshot}>
                   <Camera className="w-4 h-4 mr-2" />
                   Snapshot
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSaveLastSeconds(30)}>
+                  <Circle className="w-4 h-4 mr-2" />
+                  Save Last 30s
                 </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Maximize2 className="w-4 h-4 mr-2" />

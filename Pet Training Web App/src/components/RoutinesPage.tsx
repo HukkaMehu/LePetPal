@@ -181,9 +181,10 @@ export default function RoutinesPage() {
       }
 
       handleCloseDialog();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving routine:', err);
-      toast.error(editingRoutine ? 'Failed to update routine' : 'Failed to create routine');
+      const errorMessage = err?.message || (editingRoutine ? 'Failed to update routine' : 'Failed to create routine');
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

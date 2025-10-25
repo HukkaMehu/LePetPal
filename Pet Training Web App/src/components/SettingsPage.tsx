@@ -9,7 +9,6 @@ import { Input } from './ui/input';
 import { Video, Shield, Bell, Cpu, Wifi, WifiOff, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModels, useSystemStatus } from '../hooks';
-import { SettingsSkeleton } from './LoadingStates';
 
 export default function SettingsPage() {
   // Hooks
@@ -47,26 +46,26 @@ export default function SettingsPage() {
   }, [status?.video]);
 
   // Get models by type
-  const detectorModels = availableModels.filter(m => m.type === 'detector');
-  const actionRecognizerModels = availableModels.filter(m => m.type === 'action_recognizer');
-  const poseEstimatorModels = availableModels.filter(m => m.type === 'pose_estimator');
-  const policyModels = availableModels.filter(m => m.type === 'policy');
+  const detectorModels = availableModels?.filter(m => m.type === 'detector') || [];
+  const actionRecognizerModels = availableModels?.filter(m => m.type === 'action_recognizer') || [];
+  const poseEstimatorModels = availableModels?.filter(m => m.type === 'pose_estimator') || [];
+  const policyModels = availableModels?.filter(m => m.type === 'policy') || [];
 
   const handleSwitchModels = async () => {
     try {
       const request: any = {};
       
       // Only include models that have changed
-      if (selectedDetector && selectedDetector !== activeModels.detector) {
+      if (selectedDetector && selectedDetector !== activeModels?.detector) {
         request.detector = selectedDetector;
       }
-      if (selectedActionRecognizer && selectedActionRecognizer !== activeModels.action_recognizer) {
+      if (selectedActionRecognizer && selectedActionRecognizer !== activeModels?.action_recognizer) {
         request.actionRecognizer = selectedActionRecognizer;
       }
-      if (selectedPoseEstimator && selectedPoseEstimator !== activeModels.pose_estimator) {
+      if (selectedPoseEstimator && selectedPoseEstimator !== activeModels?.pose_estimator) {
         request.poseEstimator = selectedPoseEstimator;
       }
-      if (selectedPolicy && selectedPolicy !== activeModels.policy) {
+      if (selectedPolicy && selectedPolicy !== activeModels?.policy) {
         request.policy = selectedPolicy;
       }
 
@@ -264,13 +263,13 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {availableModels.length === 0 && (
+                {(availableModels?.length ?? 0) === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No models available
                   </p>
                 )}
 
-                {availableModels.length > 0 && (
+                {(availableModels?.length ?? 0) > 0 && (
                   <Button onClick={handleSwitchModels} className="w-full">
                     Apply Model Changes
                   </Button>

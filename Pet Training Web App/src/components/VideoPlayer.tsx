@@ -9,6 +9,7 @@ import {
   Video
 } from 'lucide-react';
 import { toast } from 'sonner';
+import AIOverlay from './AIOverlay';
 
 interface VideoPlayerProps {
   overlays: {
@@ -37,6 +38,7 @@ export default function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(true);
   const [streamType, setStreamType] = useState<'webrtc' | 'mjpeg' | 'connecting'>('connecting');
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'failed'>('connecting');
+  const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -87,10 +89,16 @@ export default function VideoPlayer({
           setConnectionStatus('connected');
           toast.success('Connected via WebRTC');
           
-          // Log when video starts playing
+          // Log when video starts playing and get dimensions
           videoRef.current.onloadedmetadata = () => {
             console.log('[VideoPlayer] Video metadata loaded, dimensions:', 
               videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+            if (videoRef.current) {
+              setVideoDimensions({
+                width: videoRef.current.videoWidth,
+                height: videoRef.current.videoHeight
+              });
+            }
           };
           videoRef.current.onplay = () => {
             console.log('[VideoPlayer] Video started playing');
@@ -170,6 +178,13 @@ export default function VideoPlayer({
         console.log('[VideoPlayer] MJPEG stream loaded successfully');
         setConnectionStatus('connected');
         toast.info('Connected via MJPEG');
+        // Get image dimensions for overlay
+        if (imgRef.current) {
+          setVideoDimensions({
+            width: imgRef.current.naturalWidth,
+            height: imgRef.current.naturalHeight
+          });
+        }
       };
       imgRef.current.onerror = (e) => {
         console.error('[VideoPlayer] MJPEG stream failed to load:', e);
@@ -301,13 +316,13 @@ export default function VideoPlayer({
           </Badge>
         </div>
 
-        {/* Overlays */}
-        {overlays.dogBox && (
-          <div className="absolute top-1/4 left-1/3 w-1/3 h-1/2 border-2 border-green-400 rounded-lg">
-            <div className="absolute -top-6 left-0 bg-green-400 text-black px-2 py-0.5 rounded text-xs">
-              Dog (0.94)
-            </div>
-          </div>
+        {/* AI Detection Overlays */}
+        {overlays.dogBox && videoDimensions.width > 0 && (
+          <AIOverlay
+            enabled={overlays.dogBox}
+            videoWidth={videoDimensions.width}
+            videoHeight={videoDimensions.height}
+          />
         )}
 
         {overlays.keypoints && (

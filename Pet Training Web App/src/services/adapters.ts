@@ -136,6 +136,45 @@ export function adaptRoutines(backendRoutines: BackendRoutine[]): Routine[] {
   return backendRoutines.map(adaptRoutine);
 }
 
+/**
+ * Map frontend action type to backend routine step type
+ */
+function mapActionTypeToBackend(action: RoutineActionType): string {
+  const typeMap: Record<RoutineActionType, string> = {
+    'pet': 'pet',
+    'treat': 'treat',
+    'play': 'play',
+    'sit-drill': 'sit_drill',
+    'wait': 'wait',
+    'fetch': 'fetch',
+  };
+
+  return typeMap[action] || 'wait';
+}
+
+/**
+ * Transform frontend routine step to backend format
+ */
+function adaptRoutineStepToBackend(step: RoutineStep): BackendRoutineStep {
+  return {
+    type: mapActionTypeToBackend(step.action),
+    duration: step.duration || 0,
+    params: step.repeat ? { repeat: step.repeat } : undefined,
+  };
+}
+
+/**
+ * Transform frontend routine data to backend format for creation/update
+ */
+export function adaptRoutineToBackend(routine: any): any {
+  return {
+    name: routine.name,
+    cron: routine.schedule || routine.cron,
+    enabled: routine.enabled ?? true,
+    steps: routine.steps.map(adaptRoutineStepToBackend),
+  };
+}
+
 // ============================================================================
 // Media Adapters
 // ============================================================================
