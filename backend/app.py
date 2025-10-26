@@ -122,7 +122,9 @@ def create_app() -> Flask:
         def _run_robot_episode():
             try:
                 # Import heavy deps lazily so server can start without them
+                import sys
                 import traceback
+                from pathlib import Path
                 from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerConfig
                 from lerobot.robots.so100_follower.so100_follower import SO100Follower
                 from lerobot.utils.utils import log_say
@@ -190,42 +192,50 @@ def create_app() -> Flask:
                                 raise
 
                 if use_act_model:
-                    # ACT Model inference path
+                    # ACT Model inference path - continuous loop like standalone script
                     status_store.update(req_id, {"state": "executing", "phase": "load_model", "message": "Loading ACT model"})
                     
                     model_path = "/Users/samu/last/pretrained_model"
                     policy = ACTPolicy.from_pretrained(model_path)
-                    policy.eval()  # Set to evaluation mode
+                    policy.eval()
                     
-                    status_store.update(req_id, {"state": "executing", "phase": "inference", "message": "Running ACT model inference"})
+                    motor_order = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
                     
-                    # Run inference loop for specified duration (e.g., 30 seconds)
+                    status_store.update(req_id, {"state": "executing", "phase": "inference", "message": "Running ACT model inference (continuous)"})
+                    
+                    # Run continuous inference loop (like your working script)
+                    # Run for 30 seconds as a safety measure
                     control_time_s = 30
-                    fps = 30
-                    total_steps = int(control_time_s * fps)
+                    start_time = time.perf_counter()
+                    step = 0
                     
-                    for step in range(total_steps):
-                        t0 = time.perf_counter()
-                        
-                        # Get observation from robot (returns dict with camera images and state)
-                        observation = robot.capture_observation()
-                        
-                        # Run policy inference - policy handles preprocessing internally
-                        with torch.no_grad():
-                            action_dict = policy.select_action(observation)
-                        
-                        # Send action to robot
-                        robot.send_action(action_dict)
-                        
-                        # Wait for next timestep
-                        elapsed = time.perf_counter() - t0
-                        if elapsed < 1.0 / fps:
-                            time.sleep(1.0 / fps - elapsed)
-                        
-                        # Update progress
-                        if step % max(1, fps // 2) == 0:
-                            pct = int((step + 1) * 100 / total_steps)
-                            status_store.update(req_id, {"phase": "inference", "progress": pct, "message": f"Inference {pct}%"})
+                    while (time.perf_counter() - start_time) < control_time_s:
+                        try:
+                            # Get observation from robot
+                            obs_robot = robot.get_observation()
+                            
+                            # Run policy inference with the observation
+                            with torch.no_grad():
+                                action = policy.select_action(obs_robot)
+                            
+                            # Send action to robot
+                            robot.send_action(action)
+                            
+                            # Update progress every ~0.5 seconds
+                            if step % 15 == 0:  # At 30 FPS, this is ~0.5 seconds
+                                elapsed = time.perf_counter() - start_time
+                                pct = int(min(100, (elapsed / control_time_s) * 100))
+                                status_store.update(req_id, {"phase": "inference", "progress": pct, "message": f"Inference {pct}% ({elapsed:.1f}s)"})
+                            
+                            step += 1
+                            
+                        except Exception as e:
+                            error_msg = str(e)
+                            if "There is no status packet" in error_msg or "Failed to sync read" in error_msg:
+                                log_say(f"Communication error with robot: {error_msg}")
+                                raise RuntimeError(f"Robot communication error: {error_msg}")
+                            else:
+                                raise
                     
                 else:
                     # Dataset replay path (command 0)
