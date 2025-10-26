@@ -156,13 +156,13 @@ async def get_clip(
         video_url = None
         if clip.s3_uri and status == "completed":
             video_object_key = clip.s3_uri.replace(f"s3://{storage_service.bucket_name}/", "")
-            video_url = storage_service.get_presigned_url(video_object_key)
+            video_url = storage_service.get_public_url(video_object_key)
         
         # Generate preview URL if available
         preview_url = None
         if clip.preview_png and status == "completed":
             object_key = clip.preview_png.replace(f"s3://{storage_service.bucket_name}/", "")
-            preview_url = storage_service.get_presigned_url(object_key)
+            preview_url = storage_service.get_public_url(object_key)
         
         # Generate share URL if share token exists
         share_url = None
@@ -224,13 +224,13 @@ async def get_clips(
             video_url = None
             if clip.s3_uri and status == "completed":
                 video_object_key = clip.s3_uri.replace(f"s3://{storage_service.bucket_name}/", "")
-                video_url = storage_service.get_presigned_url(video_object_key)
+                video_url = storage_service.get_public_url(video_object_key)
             
             # Generate preview URL if available
             preview_url = None
             if clip.preview_png and status == "completed":
                 object_key = clip.preview_png.replace(f"s3://{storage_service.bucket_name}/", "")
-                preview_url = storage_service.get_presigned_url(object_key)
+                preview_url = storage_service.get_public_url(object_key)
             
             # Generate share URL if share token exists
             share_url = None

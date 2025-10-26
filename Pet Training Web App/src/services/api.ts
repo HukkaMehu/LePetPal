@@ -86,7 +86,7 @@ function isRetryableError(status: number): boolean {
  */
 function buildQueryString(params: Record<string, any>): string {
   const searchParams = new URLSearchParams();
-  
+
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       if (Array.isArray(value)) {
@@ -96,7 +96,7 @@ function buildQueryString(params: Record<string, any>): string {
       }
     }
   });
-  
+
   const queryString = searchParams.toString();
   return queryString ? `?${queryString}` : '';
 }
@@ -134,7 +134,7 @@ export class APIClient {
   ): Promise<T> {
     const baseURL = useAIService ? this.aiServiceURL : this.baseURL;
     const url = `${baseURL}${endpoint}`;
-    
+
     // Request interceptor - log request
     if (config.debug) {
       console.log(`[API Request] ${options.method || 'GET'} ${url}`, {
@@ -163,7 +163,7 @@ export class APIClient {
         // Handle error responses
         if (!response.ok) {
           const error = await this.handleErrorResponse(response);
-          
+
           // Retry if error is retryable and we have attempts left
           if (isRetryableError(response.status) && attempt < this.retryConfig.maxRetries) {
             const delay = calculateBackoff(attempt, this.retryConfig);
@@ -174,7 +174,7 @@ export class APIClient {
             await sleep(delay);
             continue;
           }
-          
+
           throw error;
         }
 
@@ -183,18 +183,18 @@ export class APIClient {
         if (contentType && contentType.includes('application/json')) {
           return await response.json();
         }
-        
+
         // Return empty object for non-JSON responses (e.g., 204 No Content)
         return {} as T;
 
       } catch (error) {
         lastError = error as Error;
-        
+
         // If it's an APIError, don't retry
         if (error instanceof APIError) {
           throw error;
         }
-        
+
         // Network error - retry if we have attempts left
         if (attempt < this.retryConfig.maxRetries) {
           const delay = calculateBackoff(attempt, this.retryConfig);
@@ -221,7 +221,7 @@ export class APIClient {
    */
   private async handleErrorResponse(response: Response): Promise<APIError> {
     let errorData: BackendErrorResponse | null = null;
-    
+
     try {
       errorData = await response.json();
     } catch {
@@ -230,7 +230,7 @@ export class APIClient {
 
     // Handle different error formats
     let message: string;
-    
+
     if (errorData?.detail) {
       // FastAPI validation errors return detail as an array
       if (Array.isArray(errorData.detail)) {
@@ -245,7 +245,7 @@ export class APIClient {
     } else {
       message = response.statusText || 'An error occurred';
     }
-    
+
     return new APIError(response.status, message, errorData);
   }
 
@@ -333,7 +333,7 @@ export class APIClient {
   async getDailyMetrics(params: MetricsQueryParams = {}): Promise<BackendDailyMetrics[]> {
     // Backend requires from_date, to_date, and user_id as query params
     const queryParams: Record<string, any> = {};
-    
+
     if (params.startDate) {
       queryParams.from_date = params.startDate;
     }
@@ -343,7 +343,7 @@ export class APIClient {
     if (params.userId) {
       queryParams.user_id = params.userId;
     }
-    
+
     const queryString = buildQueryString(queryParams);
     return this.request<BackendDailyMetrics[]>(`/analytics/daily${queryString}`);
   }
@@ -489,7 +489,7 @@ export class APIClient {
    */
   async *streamCoachMessage(message: string, context?: string): AsyncGenerator<string> {
     const url = `${this.aiServiceURL}/coach/stream`;
-    
+
     if (config.debug) {
       console.log(`[API Stream] POST ${url}`, { message, context });
     }
@@ -513,13 +513,13 @@ export class APIClient {
     }
 
     const decoder = new TextDecoder();
-    
+
     try {
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         const chunk = decoder.decode(value, { stream: true });
         yield chunk;
       }

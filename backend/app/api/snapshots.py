@@ -119,7 +119,7 @@ async def create_snapshot(
         db.refresh(db_snapshot)
         
         # Generate preview URL
-        preview_url = storage_service.get_presigned_url(object_key)
+        preview_url = storage_service.get_public_url(object_key)
         
         # Broadcast snapshot saved event
         await broadcast_snapshot_saved({
@@ -170,7 +170,7 @@ async def get_snapshots(
         for snapshot in snapshots:
             # Extract object key from S3 URI
             object_key = snapshot.s3_uri.replace(f"s3://{storage_service.bucket_name}/", "")
-            preview_url = storage_service.get_presigned_url(object_key)
+            preview_url = storage_service.get_public_url(object_key)
             
             snapshots_data.append(
                 SnapshotResponse(
@@ -211,7 +211,7 @@ async def get_snapshot(
         
         # Extract object key from S3 URI
         object_key = snapshot.s3_uri.replace(f"s3://{storage_service.bucket_name}/", "")
-        preview_url = storage_service.get_presigned_url(object_key)
+        preview_url = storage_service.get_public_url(object_key)
         
         return SnapshotResponse(
             id=str(snapshot.id),

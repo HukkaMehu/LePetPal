@@ -5,8 +5,11 @@ These endpoints return 501 Not Implemented until robot hardware is connected.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+import httpx
+import logging
 
 router = APIRouter(prefix="/api/robot", tags=["robot"])
+logger = logging.getLogger(__name__)
 
 
 class RobotCommand(BaseModel):
@@ -49,7 +52,53 @@ async def send_robot_command(command: RobotCommand):
             detail=f"Invalid command type. Must be one of: {', '.join(valid_commands)}"
         )
     
-    # For demo purposes, return success
+    # Special handling for pet, fetch, and treat - proxy to external robot API
+    if command.action in ['pet', 'fetch', 'treat']:
+        try:
+            # Determine the endpoint and payload based on action
+            if command.action == 'treat':
+                robot_api_url = "https://lepetpal.verkkoventure.com/connect_to_watch"
+                payload = None  # No body for this endpoint
+            else:
+                robot_api_url = "https://lepetpal.verkkoventure.com/command"
+                # Pet = 0, Fetch = 1
+                payload = {"command": 1 if command.action == 'fetch' else 0}
+            
+            logger.info(f"Proxying {command.action} command to robot API: {robot_api_url}")
+            logger.debug(f"Payload: {payload}")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                if payload is not None:
+                    response = await client.post(
+                        robot_api_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                else:
+                    response = await client.post(robot_api_url)
+                
+                logger.info(f"Robot API response: status={response.status_code}")
+                
+                if response.status_code == 200:
+                    return CommandResponse(
+                        success=True,
+                        message=f"{command.action.capitalize()} command sent to robot",
+                        command_id=None
+                    )
+                else:
+                    logger.error(f"Robot API error: {response.status_code} - {response.text}")
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Robot API returned status {response.status_code}"
+                    )
+        except httpx.TimeoutException:
+            logger.error("Robot API request timed out")
+            raise HTTPException(status_code=504, detail="Robot API request timed out")
+        except httpx.RequestError as e:
+            logger.error(f"Robot API request failed: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to connect to robot API: {str(e)}")
+    
+    # For other commands (treat, play), return success
     # In production, this would dispatch to robot hardware
     return CommandResponse(
         success=True,

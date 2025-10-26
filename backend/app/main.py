@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.websocket import manager
-from app.api import video, websocket, events, snapshots, clips, analytics, routines, commands, models, status, remote_video
+from app.api import video, websocket, events, snapshots, clips, analytics, routines, commands, models, status, remote_video, activity_chat
 from app.workers.event_processor import event_processor
 from app.workers.metrics_aggregator import metrics_aggregator
 from app.workers.routine_scheduler import routine_scheduler
 from app.workers.frame_processor import frame_processor
+from app.core.background_stream import background_stream
 
 
 @asynccontextmanager
@@ -23,8 +24,11 @@ async def lifespan(app: FastAPI):
     await routine_scheduler.start()
     # Startup: Start frame processor for AI
     await frame_processor.start()
+    # Startup: Start background video stream to keep buffer filled
+    await background_stream.start()
     yield
     # Shutdown: Clean up resources
+    await background_stream.stop()
     await frame_processor.stop()
     await event_processor.stop()
     await metrics_aggregator.stop()
@@ -52,7 +56,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(video.router)
-app.include_router(remote_video.router)
+app.include_router(remote_video.router, prefix="/api")
 app.include_router(websocket.router)
 app.include_router(events.router)
 app.include_router(snapshots.router)
@@ -62,6 +66,7 @@ app.include_router(routines.router)
 app.include_router(commands.router)
 app.include_router(models.router)
 app.include_router(status.router)
+app.include_router(activity_chat.router, prefix="/api")
 
 @app.get("/")
 async def root():
@@ -75,3 +80,13 @@ async def health():
 async def get_frame_processor_stats():
     """Get frame processor statistics for debugging"""
     return frame_processor.get_stats()
+
+@app.get("/api/debug/background-stream-status")
+async def get_background_stream_status():
+    """Get background stream status for debugging"""
+    from app.core.video_buffer import video_buffer
+    buffer_info = video_buffer.get_buffer_info()
+    return {
+        "stream_running": background_stream.running,
+        "buffer": buffer_info
+    }

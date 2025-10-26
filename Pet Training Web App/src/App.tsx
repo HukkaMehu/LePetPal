@@ -10,9 +10,10 @@ import AnalyticsPage from './components/AnalyticsPage';
 import RoutinesPage from './components/RoutinesPage';
 import SettingsPage from './components/SettingsPage';
 import TestPage from './components/TestPage';
+import ActivityChat from './components/ActivityChat';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'live' | 'gallery' | 'analytics' | 'routines' | 'settings' | 'tests'>('live');
+  const [currentPage, setCurrentPage] = useState<'live' | 'gallery' | 'analytics' | 'routines' | 'settings' | 'tests' | 'chat'>('live');
 
   return (
     <ErrorBoundary>
@@ -27,6 +28,7 @@ export default function App() {
             {currentPage === 'routines' && <RoutinesPage />}
             {currentPage === 'settings' && <SettingsPage />}
             {currentPage === 'tests' && <TestPage />}
+            {currentPage === 'chat' && <ActivityChat />}
           </main>
         </div>
         <Toaster />

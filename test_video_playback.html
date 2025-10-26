@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Playback Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        video {
+            width: 100%;
+            max-width: 640px;
+            border: 2px solid #333;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        h2 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Playback Test</h1>
+    
+    <div class="test-section">
+        <h2>Old Video (mp4v codec)</h2>
+        <video controls>
+            <source src="http://localhost:9000/dog-monitor/clips/00000000-0000-0000-0000-000000000000/20251026_074925_clip.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <p>File: 20251026_074925_clip.mp4 (383 KB)</p>
+    </div>
+    
+    <div class="test-section">
+        <h2>New Video (avc1/H.264 codec)</h2>
+        <video controls>
+            <source src="http://localhost:9000/dog-monitor/clips/00000000-0000-0000-0000-000000000000/20251026_080003_clip.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <p>File: 20251026_080003_clip.mp4 (5.7 MB)</p>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test with Real Buffer Data</h2>
+        <button onclick="createTestClip()">Create New Test Clip</button>
+        <div id="result"></div>
+        <video id="testVideo" controls style="display:none; margin-top: 20px;">
+            <source id="testVideoSource" type="video/mp4">
+        </video>
+    </div>
+    
+    <script>
+        async function createTestClip() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Creating clip...';
+            
+            try {
+                // Create clip for last 5 seconds
+                const endTime = new Date();
+                const startTime = new Date(endTime.getTime() - 5000);
+                
+                const response = await fetch('http://localhost:8000/api/clips', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        start_ts: startTime.toISOString(),
+                        duration_ms: 5000,
+                        labels: ['web_test']
+                    })
+                });
+                
+                const clip = await response.json();
+                resultDiv.innerHTML = `Clip created: ${clip.id}<br>Waiting for processing...`;
+                
+                // Wait and check status
+                await new Promise(resolve => setTimeout(resolve, 8000));
+                
+                const statusResponse = await fetch(`http://localhost:8000/api/clips/${clip.id}`);
+                const status = await statusResponse.json();
+                
+                resultDiv.innerHTML = `
+                    Status: ${status.status}<br>
+                    Video URL: <a href="${status.video_url}" target="_blank">Open</a><br>
+                    <button onclick="playTestVideo('${status.video_url}')">Play Here</button>
+                `;
+                
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        }
+        
+        function playTestVideo(url) {
+            const video = document.getElementById('testVideo');
+            const source = document.getElementById('testVideoSource');
+            source.src = url;
+            video.load();
+            video.style.display = 'block';
+            video.play();
+        }
+    </script>
+</body>
+</html>

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # AI Service
     AI_SERVICE_URL: str = "http://localhost:8001"
     
+    # OpenAI API Key (for Activity Chat)
+    OPENAI_API_KEY: str = ""
+    
     # Video Source
     # Can be:
     # - Integer (0, 1, 2) for local camera index

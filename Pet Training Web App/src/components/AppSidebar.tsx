@@ -7,17 +7,18 @@ import {
   SidebarMenuButton,
   SidebarFooter,
 } from './ui/sidebar';
-import { Video, Images, BarChart3, ListChecks, Settings, FlaskConical } from 'lucide-react';
+import { Video, Images, BarChart3, ListChecks, Settings, FlaskConical, MessageCircle } from 'lucide-react';
 import { Separator } from './ui/separator';
 
 interface AppSidebarProps {
-  currentPage: 'live' | 'gallery' | 'analytics' | 'routines' | 'settings' | 'tests';
-  onNavigate: (page: 'live' | 'gallery' | 'analytics' | 'routines' | 'settings' | 'tests') => void;
+  currentPage: 'live' | 'gallery' | 'analytics' | 'routines' | 'settings' | 'tests' | 'chat';
+  onNavigate: (page: 'live' | 'gallery' | 'analytics' | 'routines' | 'settings' | 'tests' | 'chat') => void;
 }
 
 export function AppSidebar({ currentPage, onNavigate }: AppSidebarProps) {
   const menuItems = [
     { id: 'live' as const, icon: Video, label: 'Live' },
+    { id: 'chat' as const, icon: MessageCircle, label: 'AI Chat' },
     { id: 'gallery' as const, icon: Images, label: 'Gallery' },
     { id: 'analytics' as const, icon: BarChart3, label: 'Analytics' },
     { id: 'routines' as const, icon: ListChecks, label: 'Routines' },

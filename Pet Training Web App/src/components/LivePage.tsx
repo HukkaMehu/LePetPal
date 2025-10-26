@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
+import AIOverlay from './AIOverlay';
 import { 
   Circle, 
   Camera, 
@@ -28,11 +29,16 @@ import { apiClient } from '../services/api';
 export default function LivePage() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
+  const [aiOverlayEnabled, setAiOverlayEnabled] = useState(true);
+  const imgRef = useRef<HTMLImageElement>(null);
   const { status, loading: statusLoading } = useSystemStatus();
 
   const handleAction = async (action: 'pet' | 'treat' | 'fetch') => {
     try {
-      // Send robot action command to backend
+      console.log(`[LivePage] Sending ${action} command via backend proxy`);
+      
+      // All commands now go through backend (which proxies pet/fetch to robot API)
       const response = await apiClient.sendRobotAction(action);
       
       if (response.success) {
@@ -149,13 +155,38 @@ export default function LivePage() {
   const fps = status?.fps ?? 0;
   const latency = status?.latencyMs ?? 0;
 
+  // Track video dimensions for AI overlay
+  useEffect(() => {
+    if (imgRef.current) {
+      const updateDimensions = () => {
+        if (imgRef.current) {
+          setVideoDimensions({
+            width: imgRef.current.naturalWidth || imgRef.current.width,
+            height: imgRef.current.naturalHeight || imgRef.current.height
+          });
+        }
+      };
+      
+      imgRef.current.addEventListener('load', updateDimensions);
+      // Try to get dimensions immediately if already loaded
+      if (imgRef.current.complete) {
+        updateDimensions();
+      }
+      
+      return () => {
+        imgRef.current?.removeEventListener('load', updateDimensions);
+      };
+    }
+  }, [status?.video]);
+
   // Log video configuration
   console.log('[LivePage] Video config:', {
     videoStreamUrl,
     statusVideo: status?.video,
     isConnected,
     apiBaseURL: config.apiBaseURL,
-    fullVideoURL: config.videoStreamURL
+    fullVideoURL: config.videoStreamURL,
+    videoDimensions
   });
 
   return (
@@ -203,6 +234,14 @@ export default function LivePage() {
           </div>
           <div className="flex items-center gap-2">
             <Button
+              variant={aiOverlayEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAiOverlayEnabled(!aiOverlayEnabled)}
+              title="Toggle AI Detection Overlay"
+            >
+              {aiOverlayEnabled ? '🎯 AI On' : '🎯 AI Off'}
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               onClick={() => handleSaveLastSeconds(30)}
@@ -243,8 +282,9 @@ export default function LivePage() {
           <Card className="overflow-hidden bg-black">
             <div className="aspect-video relative">
               {/* Always show video stream (even if device is "offline" for demo/testing) */}
-              {status?.video === 'mjpeg' && (
+              <>
                 <img
+                  ref={imgRef}
                   src={videoStreamUrl}
                   alt="Live stream"
                   className="w-full h-full object-cover"
@@ -256,38 +296,15 @@ export default function LivePage() {
                     console.error('[LivePage] Error details:', e);
                   }}
                 />
-              )}
-              
-              {/* WebRTC Stream - placeholder for future implementation */}
-              {status?.video === 'webrtc' && (
-                <div className="w-full h-full flex items-center justify-center bg-black">
-                  <div className="text-center text-white">
-                    <Wifi className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-sm opacity-75">WebRTC stream</p>
-                    <p className="text-xs opacity-50 mt-1">Coming soon</p>
-                  </div>
-                </div>
-              )}
-              
-              {/* No stream type detected - show offline message */}
-              {!status?.video && (
-                <div className="w-full h-full flex items-center justify-center bg-black">
-                  <div className="text-center text-white">
-                    {isConnected ? (
-                      <>
-                        <Circle className="w-12 h-12 mx-auto mb-4 opacity-50 animate-pulse" />
-                        <p className="text-sm opacity-75">Connecting to stream...</p>
-                      </>
-                    ) : (
-                      <>
-                        <WifiOff className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-sm opacity-75">Device offline</p>
-                        <p className="text-xs opacity-50 mt-1">Waiting for connection...</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+                {/* AI Detection Overlay */}
+                {aiOverlayEnabled && videoDimensions.width > 0 && (
+                  <AIOverlay
+                    enabled={aiOverlayEnabled}
+                    videoWidth={videoDimensions.width}
+                    videoHeight={videoDimensions.height}
+                  />
+                )}
+              </>
               
               {/* Recording indicator */}
               {isRecording && (

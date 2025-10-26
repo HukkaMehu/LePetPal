@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Activity Chat</title>
+</head>
+<body>
+    <h1>Activity Chat Test</h1>
+    <div id="status"></div>
+    <br>
+    <input type="text" id="message" placeholder="Ask a question..." style="width: 400px;">
+    <button onclick="sendMessage()">Send</button>
+    <div id="response" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc;"></div>
+
+    <script>
+        // Test status endpoint
+        fetch('http://localhost:8000/api/activity-chat/status')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('status').innerHTML = 
+                    '<strong>Status:</strong> ' + JSON.stringify(data, null, 2);
+            })
+            .catch(err => {
+                document.getElementById('status').innerHTML = 
+                    '<strong>Error:</strong> ' + err.message;
+            });
+
+        // Test chat endpoint
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            document.getElementById('response').innerHTML = 'Loading...';
+            
+            fetch('http://localhost:8000/api/activity-chat/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    include_activity_log: true
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('response').innerHTML = 
+                    '<strong>Response:</strong><br>' + data.response;
+            })
+            .catch(err => {
+                document.getElementById('response').innerHTML = 
+                    '<strong>Error:</strong> ' + err.message;
+            });
+        }
+    </script>
+</body>
+</html>

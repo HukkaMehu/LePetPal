@@ -1,15 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-
-interface Detection {
-  class_name: string;
-  confidence: number;
-  box: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  };
-}
+import { config } from '../config/env';
+import { Detection, WebSocketMessage } from '../types';
 
 interface AIOverlayProps {
   enabled: boolean;
@@ -25,8 +16,7 @@ export default function AIOverlay({ enabled, videoWidth, videoHeight }: AIOverla
     if (!enabled) return;
 
     // Connect to WebSocket for AI detections
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const wsUrl = backendUrl.replace('http', 'ws') + '/ws';
+    const wsUrl = config.wsURL;
     
     console.log('[AIOverlay] Connecting to WebSocket:', wsUrl);
     
@@ -39,7 +29,7 @@ export default function AIOverlay({ enabled, videoWidth, videoHeight }: AIOverla
 
     ws.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data);
+        const message: WebSocketMessage = JSON.parse(event.data);
         
         // Listen for AI detection messages
         if (message.type === 'ai_detections' && message.data?.detections) {

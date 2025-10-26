@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend AI Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        h1 {
+            color: #4ade80;
+            margin-top: 0;
+        }
+        h2 {
+            color: #60a5fa;
+            margin-top: 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.connected {
+            background: #166534;
+            color: #4ade80;
+        }
+        .status.disconnected {
+            background: #7f1d1d;
+            color: #f87171;
+        }
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #videoStream {
+            width: 100%;
+            display: block;
+        }
+        .detection-box {
+            position: absolute;
+            border: 2px solid;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+        .detection-label {
+            position: absolute;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+        }
+        .log {
+            background: #1a1a1a;
+            border-radius: 4px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4ade80;
+            padding-left: 10px;
+        }
+        .log-entry.error {
+            border-left-color: #f87171;
+        }
+        button {
+            background: #4ade80;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px;
+        }
+        button:hover {
+            background: #22c55e;
+        }
+        button:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .stat {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4ade80;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 Frontend AI Integration Test</h1>
+    
+    <div class="container">
+        <!-- Left Panel: Video + Overlay -->
+        <div class="panel">
+            <h2>Live Video + AI Overlay</h2>
+            <div class="video-container" id="videoContainer">
+                <img id="videoStream" src="http://localhost:8000/api/remote-video/stream?url=https://lepetpal.verkkoventure.com/camera&ai=true" alt="Video Stream">
+            </div>
+            <div style="margin-top: 10px;">
+                <button onclick="toggleOverlay()">Toggle Overlay</button>
+                <button onclick="clearDetections()">Clear Detections</button>
+            </div>
+        </div>
+
+        <!-- Right Panel: Status + Logs -->
+        <div class="panel">
+            <h2>WebSocket Status</h2>
+            <div id="wsStatus" class="status disconnected">Disconnected</div>
+            
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value" id="detectionCount">0</div>
+                    <div class="stat-label">Detections</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="messageCount">0</div>
+                    <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="fps">0</div>
+                    <div class="stat-label">FPS</div>
+                </div>
+            </div>
+
+            <h2>Detection Log</h2>
+            <div class="log" id="log"></div>
+            
+            <div style="margin-top: 10px;">
+                <button onclick="connectWebSocket()">Connect</button>
+                <button onclick="disconnectWebSocket()">Disconnect</button>
+                <button onclick="clearLog()">Clear Log</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let overlayEnabled = true;
+        let detectionCount = 0;
+        let messageCount = 0;
+        let lastMessageTime = Date.now();
+        let fpsCounter = 0;
+
+        // Update FPS counter
+        setInterval(() => {
+            document.getElementById('fps').textContent = fpsCounter;
+            fpsCounter = 0;
+        }, 1000);
+
+        function log(message, isError = false) {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry' + (isError ? ' error' : '');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('wsStatus');
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '✓ Connected to ws://localhost:8000/ws/ui';
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '✗ Disconnected';
+            }
+        }
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', false);
+                return;
+            }
+
+            log('Connecting to WebSocket...', false);
+            ws = new WebSocket('ws://localhost:8000/ws/ui');
+
+            ws.onopen = () => {
+                log('✓ WebSocket connected', false);
+                updateStatus(true);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    messageCount++;
+                    document.getElementById('messageCount').textContent = messageCount;
+                    
+                    if (message.type === 'ai_detections') {
+                        fpsCounter++;
+                        const detections = message.data?.detections || [];
+                        
+                        if (detections.length > 0) {
+                            detectionCount += detections.length;
+                            document.getElementById('detectionCount').textContent = detectionCount;
+                            
+                            log(`Detected ${detections.length} object(s): ${detections.map(d => `${d.class_name} (${(d.confidence * 100).toFixed(0)}%)`).join(', ')}`, false);
+                            
+                            if (overlayEnabled) {
+                                renderDetections(detections);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    log(`Error parsing message: ${error.message}`, true);
+                }
+            };
+
+            ws.onerror = (error) => {
+                log('WebSocket error', true);
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                log('WebSocket closed', false);
+                updateStatus(false);
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('Disconnected', false);
+            }
+        }
+
+        function renderDetections(detections) {
+            // Clear existing boxes
+            const container = document.getElementById('videoContainer');
+            const existingBoxes = container.querySelectorAll('.detection-box, .detection-label');
+            existingBoxes.forEach(box => box.remove());
+
+            // Get video dimensions
+            const video = document.getElementById('videoStream');
+            const videoWidth = video.naturalWidth || video.width;
+            const videoHeight = video.naturalHeight || video.height;
+
+            if (videoWidth === 0 || videoHeight === 0) {
+                return; // Video not loaded yet
+            }
+
+            // Render each detection
+            detections.forEach((detection, index) => {
+                const { class_name, confidence, box } = detection;
+                
+                // Convert normalized coordinates to pixels
+                const left = box.x * videoWidth;
+                const top = box.y * videoHeight;
+                const width = box.w * videoWidth;
+                const height = box.h * videoHeight;
+
+                // Choose color based on class
+                const color = class_name === 'person' ? 'rgb(59, 130, 246)' : 'rgb(34, 197, 94)';
+                const bgColor = class_name === 'person' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)';
+
+                // Create bounding box
+                const boxDiv = document.createElement('div');
+                boxDiv.className = 'detection-box';
+                boxDiv.style.left = `${left}px`;
+                boxDiv.style.top = `${top}px`;
+                boxDiv.style.width = `${width}px`;
+                boxDiv.style.height = `${height}px`;
+                boxDiv.style.borderColor = color;
+                boxDiv.style.backgroundColor = bgColor;
+
+                // Create label
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'detection-label';
+                labelDiv.style.left = `${left}px`;
+                labelDiv.style.top = `${top - 25}px`;
+                labelDiv.style.backgroundColor = color;
+                labelDiv.textContent = `${class_name} ${(confidence * 100).toFixed(0)}%`;
+
+                container.appendChild(boxDiv);
+                container.appendChild(labelDiv);
+            });
+        }
+
+        function toggleOverlay() {
+            overlayEnabled = !overlayEnabled;
+            if (!overlayEnabled) {
+                clearDetections();
+            }
+            log(`Overlay ${overlayEnabled ? 'enabled' : 'disabled'}`, false);
+        }
+
+        function clearDetections() {
+            const container = document.getElementById('videoContainer');
+            const boxes = container.querySelectorAll('.detection-box, .detection-label');
+            boxes.forEach(box => box.remove());
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('Log cleared', false);
+        }
+
+        // Auto-connect on load
+        window.onload = () => {
+            log('Page loaded', false);
+            log('Click "Connect" to start receiving AI detections', false);
+            
+            // Auto-connect after 1 second
+            setTimeout(() => {
+                connectWebSocket();
+            }, 1000);
+        };
+
+        // Cleanup on unload
+        window.onbeforeunload = () => {
+            if (ws) {
+                ws.close();
+            }
+        };
+    </script>
+</body>
+</html>

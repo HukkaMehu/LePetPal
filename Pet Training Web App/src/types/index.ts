@@ -218,13 +218,56 @@ export interface ModelSwitchRequest {
 // WebSocket Message Types
 // ============================================================================
 
-export type WebSocketMessageType = 'event' | 'overlay' | 'telemetry' | 'routine';
+export type WebSocketMessageType = 'event' | 'overlay' | 'telemetry' | 'routine' | 'ai_detections';
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
   event_type?: string;
   overlay_type?: string;
+  timestamp?: number;
   data: any;
+}
+
+// ============================================================================
+// AI Detection Types
+// ============================================================================
+
+export interface BoundingBox {
+  x: number;  // normalized 0-1
+  y: number;  // normalized 0-1
+  w: number;  // normalized 0-1
+  h: number;  // normalized 0-1
+}
+
+export interface Detection {
+  class_name: string;
+  confidence: number;
+  box: BoundingBox;
+}
+
+export interface Keypoint {
+  name: string;
+  x: number;
+  y: number;
+  confidence: number;
+}
+
+export interface Action {
+  label: string;
+  probability: number;
+}
+
+export interface ObjectDetection {
+  class_name: string;
+  confidence: number;
+  box: BoundingBox;
+}
+
+export interface AIDetectionData {
+  detections: Detection[];
+  keypoints?: Keypoint[];
+  actions?: Action[];
+  objects?: ObjectDetection[];
 }
 
 // ============================================================================

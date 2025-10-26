@@ -22,12 +22,18 @@ router = APIRouter()
 
 # Try to load YOLOv8 model for real detection
 try:
+    import torch
     from ultralytics import YOLO
     import numpy as np
     from PIL import Image
     
+    # Fix for PyTorch 2.6+ - allow ultralytics models to be loaded
+    torch.serialization.add_safe_globals([
+        'ultralytics.nn.tasks.DetectionModel',
+    ])
+    
     print("[Vision] Loading YOLOv8 model...")
-    detector_model = YOLO('yolov8n.pt')  # Downloads automatically on first run
+    detector_model = YOLO('yolov8s.pt')  # Small model - better accuracy than nano
     print("[Vision] YOLOv8 model loaded successfully")
     YOLO_AVAILABLE = True
 except Exception as e:

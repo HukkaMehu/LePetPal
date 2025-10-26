@@ -345,6 +345,9 @@ def process_clip_sync(
         try:
             # Calculate time range
             start_time = datetime.fromisoformat(start_ts)
+            # Remove timezone info to match buffer's timezone-naive timestamps
+            if start_time.tzinfo is not None:
+                start_time = start_time.replace(tzinfo=None)
             end_time = start_time + timedelta(milliseconds=duration_ms)
             
             # Get frames directly from buffer (same process!)
@@ -373,15 +376,15 @@ def process_clip_sync(
             temp_video_path = temp_video.name
             temp_video.close()
             
-            # Initialize video writer
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            # Initialize video writer with H.264 codec for web compatibility
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')
             out = cv2.VideoWriter(temp_video_path, fourcc, int(fps), (width, height))
             
             if not out.isOpened():
-                logger.error(f"Failed to open video writer with mp4v codec")
+                logger.error(f"Failed to open video writer with avc1 codec")
                 raise Exception("Failed to initialize video writer")
             
-            logger.info(f"Video writer initialized: {width}x{height} @ {fps} fps, codec=mp4v")
+            logger.info(f"Video writer initialized: {width}x{height} @ {fps} fps, codec=avc1 (H.264)")
             
             preview_frame = None
             

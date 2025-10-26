@@ -20,7 +20,11 @@ from PIL import Image
 from dotenv import load_dotenv
 
 # Load environment variables from .env.logger
-load_dotenv('.env.logger')
+from pathlib import Path
+env_path = Path(__file__).parent / '.env.logger'
+print(f"[DEBUG] Loading .env from: {env_path}")
+print(f"[DEBUG] .env file exists: {env_path.exists()}")
+load_dotenv(env_path, override=True)  # Force override existing env vars
 
 # Try importing API clients
 try:
@@ -53,6 +57,11 @@ class StreamActivityLogger:
         self.log_file = Path(log_file)
         self.interval = interval
         self.provider = provider.lower()
+        self.is_url = isinstance(video_source, str) and video_source.startswith('http')
+        
+        print(f"[DEBUG] video_source type: {type(video_source)}")
+        print(f"[DEBUG] video_source value: {video_source}")
+        print(f"[DEBUG] is_url: {self.is_url}")
         
         # Initialize API client
         if self.provider == "openai":
@@ -75,10 +84,14 @@ class StreamActivityLogger:
         else:
             raise ValueError(f"Unknown provider: {provider}")
         
-        # Open video stream
-        self.cap = cv2.VideoCapture(video_source)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Failed to open video source: {video_source}")
+        # Open video stream (only for local cameras, not URLs)
+        if not self.is_url:
+            self.cap = cv2.VideoCapture(video_source)
+            if not self.cap.isOpened():
+                raise RuntimeError(f"Failed to open video source: {video_source}")
+        else:
+            self.cap = None
+            print(f"✅ Will fetch frames from URL: {video_source}")
         
         print(f"✅ Connected to video source")
         print(f"✅ Using {self.provider} ({self.model if self.provider == 'openai' else 'gemini-1.5-flash'})")
@@ -87,10 +100,56 @@ class StreamActivityLogger:
     
     def capture_frame(self):
         """Capture a single frame from the stream."""
-        ret, frame = self.cap.read()
-        if not ret:
-            return None
-        return frame
+        if self.is_url:
+            # Fetch frame from HTTP stream using httpx with streaming
+            import httpx
+            import numpy as np
+            
+            try:
+                print(f"[DEBUG] Fetching frame from {self.video_source}...")
+                with httpx.Client(timeout=10.0) as client:
+                    # Use streaming to read only what we need
+                    with client.stream('GET', self.video_source) as response:
+                        print(f"[DEBUG] Response status: {response.status_code}")
+                        
+                        if response.status_code == 200:
+                            # Read chunks until we have a complete JPEG frame
+                            buffer = b''
+                            for chunk in response.iter_bytes():
+                                buffer += chunk
+                                
+                                # Look for JPEG boundaries
+                                start = buffer.find(b'\xff\xd8')  # JPEG start
+                                end = buffer.find(b'\xff\xd9')    # JPEG end
+                                
+                                if start != -1 and end != -1 and end > start:
+                                    # Extract complete JPEG frame
+                                    frame_bytes = buffer[start:end+2]
+                                    print(f"[DEBUG] Extracted {len(frame_bytes)} bytes")
+                                    
+                                    nparr = np.frombuffer(frame_bytes, np.uint8)
+                                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                                    
+                                    if frame is not None:
+                                        print(f"[DEBUG] Frame decoded: {frame.shape}")
+                                        return frame
+                                    
+                                # Limit buffer size to prevent memory issues
+                                if len(buffer) > 1000000:  # 1MB
+                                    buffer = buffer[-100000:]  # Keep last 100KB
+                        else:
+                            print(f"[DEBUG] Bad status code: {response.status_code}")
+            except Exception as e:
+                print(f"⚠️  Error fetching frame from URL: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+        else:
+            # Local camera
+            ret, frame = self.cap.read()
+            if not ret:
+                return None
+            return frame
     
     def frame_to_base64(self, frame):
         """Convert OpenCV frame to base64 JPEG."""
@@ -187,7 +246,8 @@ class StreamActivityLogger:
         except KeyboardInterrupt:
             print("\n\n✅ Stopped logging")
         finally:
-            self.cap.release()
+            if self.cap:
+                self.cap.release()
             print(f"📄 Activity log saved to: {self.log_file.absolute()}")
 
 
@@ -206,15 +266,16 @@ def main():
     args = parser.parse_args()
     
     # Use env vars as defaults, command line args override
-    source = args.source or os.getenv("VIDEO_SOURCE", "0")
+    # Read from VIDEO_SOURCE env var, fallback to remote camera URL
+    print(f"[DEBUG] args.source: {args.source}")
+    print(f"[DEBUG] VIDEO_SOURCE env: {os.getenv('VIDEO_SOURCE')}")
+    source = args.source or os.getenv("VIDEO_SOURCE", "https://lepetpal.verkkoventure.com/video_feed")
     log_file = args.log or os.getenv("LOG_FILE", "stream_activity.txt")
-    interval = args.interval or int(os.getenv("CAPTURE_INTERVAL", "10"))
+    interval = args.interval or int(os.getenv("CAPTURE_INTERVAL", "15"))
     provider = args.provider or os.getenv("AI_PROVIDER", "openai")
     model = args.model or os.getenv("AI_MODEL")
     
-    # Convert source to int if it's a digit
-    if isinstance(source, str) and source.isdigit():
-        source = int(source)
+    print(f"[DEBUG] Using video source: '{source}'")
     
     # Create and run logger
     logger = StreamActivityLogger(

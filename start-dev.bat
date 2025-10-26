@@ -17,6 +17,9 @@ start "Backend API" cmd /k "cd /d backend && call venv\Scripts\activate.bat && u
 echo Starting AI Service...
 start "AI Service" cmd /k "cd /d ai_service && call venv\Scripts\activate.bat && uvicorn main:app --reload --port 8001"
 
+echo Starting Activity Logger...
+start "Activity Logger" cmd /k "python stream_activity_logger.py"
+
 echo Starting Frontend...
 start "Frontend" cmd /k cd /d "Pet Training Web App" ^&^& npm run dev
 
@@ -27,9 +30,12 @@ echo Services:
 echo - Frontend: http://localhost:3000 (or http://localhost:3001 if 3000 is in use)
 echo - Backend API: http://localhost:8000/api
 echo - AI Service: http://localhost:8001
+echo - Activity Logger: Capturing frames every 15s
 echo - API Docs: http://localhost:8000/docs
 echo - MinIO Console: http://localhost:9001
 echo - WebSocket: ws://localhost:8000/ws/ui
+echo.
+echo NOTE: Activity Logger requires OPENAI_API_KEY in .env.logger
 echo.
 echo Press any key to stop all services...
 pause > nul
