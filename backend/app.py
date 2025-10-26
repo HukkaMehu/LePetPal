@@ -86,33 +86,34 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
         command_value = body if isinstance(body, int) else body.get("command")
         
-        # Map command values to datasets and ending positions
+        # Convert to integer if it's a string or other type
+        try:
+            command_value = int(command_value) if command_value is not None else 0
+        except (ValueError, TypeError):
+            command_value = 0
+        
+        # Debug logging
+        print(f"DEBUG: Received body: {body}")
+        print(f"DEBUG: Parsed command_value: {command_value} (type: {type(command_value)})")
+        
+        # Map command values to datasets
         # 0 = pet_main (default), 1 = throw_main
         if command_value == 1:
             dataset_id = "Shrek0/throw_main"
             task_name = "throw"
-            # Ending position for throw task (customize these values)
-            ending_position = {
-                "shoulder_pan": 0.0,
-                "shoulder_lift": 0.0,
-                "elbow_flex": 0.0,
-                "wrist_flex": 0.0,
-                "wrist_roll": 0.0,
-                "gripper": 0.0,
-            }
         else:
-            # Default to 0 (pet_main)
             dataset_id = "Shrek0/pet_main"
             task_name = "pet"
-            # Ending position for pet task (customize these values)
-            ending_position = {
-                "shoulder_pan": 0.0,
-                "shoulder_lift": 0.0,
-                "elbow_flex": 0.0,
-                "wrist_flex": 0.0,
-                "wrist_roll": 0.0,
-                "gripper": 0.0,
-            }
+        
+        # Ending position (same for both)
+        ending_position = {
+            "shoulder_pan": 0.0,
+            "shoulder_lift": 0.0,
+            "elbow_flex": 0.0,
+            "wrist_flex": 0.0,
+            "wrist_roll": 0.0,
+            "gripper": 0.0,
+        }
         
         # Run the LeRobot one-shot episode inline (background thread), return a request id
         req_id = str(uuid.uuid4())
@@ -289,6 +290,74 @@ def create_app() -> Flask:
 
         threading.Thread(target=_run_robot_episode, name="run-robot-episode", daemon=True).start()
         return jsonify({"request_id": req_id, "status": "accepted"}), 202
+
+    @app.post("/connect_to_watch")
+    def connect_to_watch():
+        """
+        Start watch control mode - runs watch_control_so101.py using conda lerobot environment.
+        This enables manual control of the robot via Apple Watch gestures.
+        """
+        req_id = str(uuid.uuid4())
+        status_store.create(req_id, {"state": "queued", "phase": None, "message": "watch control starting"})
+
+        def _run_watch_control():
+            try:
+                status_store.update(req_id, {"state": "executing", "phase": "start", "message": "Starting watch control"})
+                
+                # Path to the watch control script
+                watch_script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "robotics-hackathon", "watch_control_so101.py")
+                
+                # Use the direct python path from the lerobot conda environment
+                # This avoids conda activation issues
+                conda_python = "/opt/anaconda3/envs/lerobot/bin/python"
+                
+                process = subprocess.Popen(
+                    [conda_python, watch_script_path],
+                    cwd=os.path.dirname(watch_script_path),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+                status_store.update(req_id, {
+                    "state": "executing", 
+                    "phase": "running", 
+                    "message": f"Watch control running (PID: {process.pid}). Move your watch to control the robot. Tap to toggle gripper.",
+                    "pid": process.pid
+                })
+                
+                # Don't wait for process to complete - let it run in background
+                # Just check if it started successfully after a brief moment
+                time.sleep(2)
+                
+                if process.poll() is not None:
+                    # Process already exited - something went wrong
+                    stdout, stderr = process.communicate()
+                    status_store.update(req_id, {
+                        "state": "failed", 
+                        "message": f"Watch control exited immediately with code {process.returncode}",
+                        "stderr": stderr[:500] if stderr else None,  # Limit stderr size
+                        "stdout": stdout[:500] if stdout else None
+                    })
+                else:
+                    # Process is still running - success!
+                    status_store.update(req_id, {
+                        "state": "running", 
+                        "phase": "active",
+                        "message": f"Watch control is active (PID: {process.pid}). Control robot with watch gestures.",
+                        "pid": process.pid
+                    })
+                    
+            except Exception as e:
+                import traceback
+                status_store.update(req_id, {
+                    "state": "failed", 
+                    "message": f"Watch control error: {str(e)}",
+                    "traceback": traceback.format_exc()[:500]
+                })
+
+        threading.Thread(target=_run_watch_control, name="watch-control", daemon=True).start()
+        return jsonify({"request_id": req_id, "status": "accepted", "message": "Watch control starting. Check status for updates."}), 202
 
     # Expose key components and settings on app.config for debugging/introspection
     app.config.update({
