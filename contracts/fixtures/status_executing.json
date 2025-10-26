@@ -1,0 +1,7 @@
+{
+  "state": "executing",
+  "phase": "grasp",
+  "confidence": 0.74,
+  "message": "grasping",
+  "duration_ms": 4321
+}

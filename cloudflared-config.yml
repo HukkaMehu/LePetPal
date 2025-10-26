@@ -1,0 +1,10 @@
+tunnel: 08d11485-1dad-40de-acdf-a2ef6853a53e
+credentials-file: /Users/samu/LePetPal/08d11485-1dad-40de-acdf-a2ef6853a53e 2.json
+originCert: /Users/samu/LePetPal/cert.pem
+loglevel: info
+
+ingress:
+  # Route all traffic to Flask backend
+  - service: http://localhost:5001
+    originRequest:
+      noTLSVerify: true
