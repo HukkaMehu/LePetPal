@@ -18,22 +18,94 @@ LePetPal is a hackathon project that combines:
 LePetPal uses a **distributed two-service architecture** that separates hardware control from user interface:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    USER BROWSER                                      │
-│                  (anywhere in the world)                             │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ↓ HTTPS
-┌─────────────────────────────────────────────────────────────────────┐
-│              WEB FRONTEND SERVICE (Vercel/Cloud)                     │
-│                   Next.js + React + TypeScript                       │
-│                                                                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │
-│  │ Live Video   │  │   Command    │  │  Analytics   │             │
-│  │   Player     │  │   Buttons    │  │  Dashboard   │             │
-│  │  (MJPEG)     │  │ (REST API)   │  │   (Charts)   │             │
-│  └──────────────┘  └──────────────┘  └──────────────┘             │
-└────────────────────────────┬────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    FRONTEND LAYER                                │
+│  Pet Training Web App (Vite + React)                            │
+│  Port: 3000/3001                                                │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
+│  │ Live     │ │ Gallery  │ │Analytics │ │ Routines │          │
+│  │ Video    │ │ Clips/   │ │ Charts & │ │ Training │          │
+│  │ Stream   │ │ Snapshots│ │ Metrics  │ │ Schedules│          │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                       │
+│  │ Settings │ │ Coach    │ │ Event    │                       │
+│  │ Models   │ │ AI Chat  │ │ Feed     │                       │
+│  └──────────┘ └──────────┘ └──────────┘                       │
+└─────────────────────────────────────────────────────────────────┘
+                    │ HTTP/WebSocket
+                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    BACKEND LAYER                                 │
+│  FastAPI Backend (Python)                                       │
+│  Port: 8000                                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ REST API Endpoints                                        │  │
+│  │ • /api/events - Event CRUD & queries                     │  │
+│  │ • /api/routines - Training routine management            │  │
+│  │ • /api/analytics - Metrics & statistics                  │  │
+│  │ • /api/clips - Video clip management                     │  │
+│  │ • /api/snapshots - Image capture                         │  │
+│  │ • /api/models - AI model switching                       │  │
+│  │ • /api/status - System health                            │  │
+│  │ • /api/activity_chat - Activity log chat                 │  │
+│  │ • /api/remote_video - Remote camera streaming            │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ WebSocket Hub (/ws)                                       │  │
+│  │ • Real-time event broadcasting                            │  │
+│  │ • AI detection updates                                    │  │
+│  │ • Telemetry streaming                                     │  │
+│  │ • Redis pub/sub for multi-instance support               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Background Workers                                        │  │
+│  │ • FrameProcessor - AI frame submission                   │  │
+│  │ • ClipProcessor - Video clip creation                    │  │
+│  │ • EventProcessor - Auto-bookmark logic                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Video Streaming                                           │  │
+│  │ • MJPEG stream (/video/mjpeg)                            │  │
+│  │ • Background stream buffer (30s rolling)                 │  │
+│  │ • Remote camera support via ngrok                        │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI SERVICE LAYER                              │
+│  AI Service (FastAPI)                                           │
+│  Port: 8001                                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Vision API (/vision/process)                             │  │
+│  │ • YOLOv8 object detection (humans, dogs)                 │  │
+│  │ • Real-time frame processing (20-30 FPS)                 │  │
+│  │ • Confidence scoring                                      │  │
+│  │ • Bounding box generation                                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ Coach API (/coach/chat, /coach/stream)                   │  │
+│  │ • GPT-4 powered training assistant                       │  │
+│  │ • Activity log analysis                                   │  │
+│  │ • Streaming responses                                     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DATA LAYER                                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │ PostgreSQL   │  │ Redis        │  │ MinIO/S3     │         │
+│  │ Port: 5432   │  │ Port: 6379   │  │ Port: 9000   │         │
+│  │              │  │              │  │              │         │
+│  │ • Events     │  │ • WebSocket  │  │ • Video clips│         │
+│  │ • Routines   │  │   pub/sub    │  │ • Snapshots  │         │
+│  │ • Analytics  │  │ • Caching    │  │ • Thumbnails │         │
+│  │ • Users      │  │ • Sessions   │  │              │         │
+│  │ • Clips      │  │              │  │              │         │
+│  │ • Snapshots  │  │              │  │              │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+└─────────────────────────────────────────────────────────────────┘
                              │
                              ↓ HTTPS via Cloudflare Tunnel
                    (https://robot-abc123.trycloudflare.com)
