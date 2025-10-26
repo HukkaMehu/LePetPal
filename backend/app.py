@@ -3,6 +3,7 @@ import threading
 import time
 import uuid
 from typing import Optional
+import subprocess 
 
 from flask import Flask, Response, jsonify, request
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from backend.adapters.servo_adapter import ServoAdapter
 from backend.adapters.tts import TTSSpeaker
 from backend.model_runner import ModelRunner
 from backend.safety import SafetyManager
+from backend.lerobot_worker import maybe_start_lerobot_worker
 
 
 ALLOWED_PROMPTS = {"pick up the ball", "get the treat", "go home"}
@@ -80,27 +82,197 @@ def create_app() -> Flask:
 
     @app.post("/command")
     def command():
-        try:
-            data = request.get_json(force=True, silent=True) or {}
-        except Exception:
-            return jsonify({"error": {"code": "invalid", "http": 400, "message": "Invalid JSON"}}), 400
+        # Parse request body to determine which dataset to use
+        body = request.get_json(silent=True) or {}
+        command_value = body if isinstance(body, int) else body.get("command")
+        
+        # Map command values to datasets and ending positions
+        # 0 = pet_main (default), 1 = throw_main with ACT model
+        if command_value == 1:
+            task_name = "throw_act"
+            use_act_model = True
+            # Ending position for throw task (customize these values)
+            ending_position = {
+                "shoulder_pan": 0.0,
+                "shoulder_lift": 0.0,
+                "elbow_flex": 0.0,
+                "wrist_flex": 0.0,
+                "wrist_roll": 0.0,
+                "gripper": 0.0,
+            }
+        else:
+            # Default to 0 (pet_main)
+            dataset_id = "Shrek0/pet_main"
+            task_name = "pet"
+            use_act_model = False
+            # Ending position for pet task (customize these values)
+            ending_position = {
+                "shoulder_pan": 0.0,
+                "shoulder_lift": 0.0,
+                "elbow_flex": 0.0,
+                "wrist_flex": 0.0,
+                "wrist_roll": 0.0,
+                "gripper": 0.0,
+            }
+        
+        # Run the LeRobot one-shot episode inline (background thread), return a request id
+        req_id = str(uuid.uuid4())
+        status_store.create(req_id, {"state": "queued", "phase": None, "message": f"robot episode queued ({task_name})"})
 
-        prompt = (data.get("prompt") or "").strip()
-        options = data.get("options") or {}
+        def _run_robot_episode():
+            try:
+                # Import heavy deps lazily so server can start without them
+                import traceback
+                from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerConfig
+                from lerobot.robots.so100_follower.so100_follower import SO100Follower
+                from lerobot.utils.utils import log_say
+                
+                if use_act_model:
+                    # Additional imports for ACT model inference
+                    import torch
+                    from lerobot.policies.act.modeling_act import ACTPolicy
+                    from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
+                else:
+                    # Imports for dataset replay
+                    import multiprocess
+                    import dill
+                    multiprocess.reduction.ForkingPickler = dill.Pickler
+                    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+                    from lerobot.utils.robot_utils import busy_wait
+                    
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                log_say(f"Import error: {error_details}")
+                status_store.update(req_id, {"state": "failed", "message": f"Import error: {e}\n{error_details}"})
+                return
 
-        if prompt not in ALLOWED_PROMPTS:
-            return jsonify({"error": {"code": "invalid", "http": 400, "message": "Invalid prompt"}}), 400
+            # Config
+            robot_port = os.getenv("ROBOT_PORT", os.getenv("LEROBOT_PORT", "/dev/tty.usbmodem5A460836061"))
+            robot_id = os.getenv("ROBOT_ID", os.getenv("LEROBOT_ID", "my_awesome_follower_arm10"))
 
-        # Special handling: Go Home must preempt
-        if prompt == "go home":
-            req_id = cmd_mgr.interrupt_and_home()
-            return jsonify({"request_id": req_id, "status": "accepted"}), 202
+            robot = None
+            try:
+                status_store.update(req_id, {"state": "executing", "phase": "connect", "message": f"Connecting robot at {robot_port}"})
+                
+                if use_act_model:
+                    # Setup robot with camera for ACT model
+                    camera_config = {"front": OpenCVCameraConfig(index_or_path=0, width=640, height=480, fps=30)}
+                    robot_config = SO100FollowerConfig(port=robot_port, id=robot_id, cameras=camera_config)
+                else:
+                    # Setup robot without camera for dataset replay
+                    robot_config = SO100FollowerConfig(port=robot_port, id=robot_id)
+                
+                robot = SO100Follower(robot_config)
+                
+                # Retry connect, handle "already connected" gracefully
+                for attempt in range(3):
+                    try:
+                        robot.connect()
+                        break
+                    except RuntimeError as e:
+                        error_msg = str(e)
+                        if "already connected" in error_msg.lower():
+                            log_say(f"Robot already connected, attempting disconnect and reconnect...")
+                            try:
+                                robot.disconnect()
+                                time.sleep(0.5)
+                                robot.connect()
+                                break
+                            except Exception as reconnect_err:
+                                log_say(f"Reconnect failed: {reconnect_err}")
+                                if attempt == 2:
+                                    raise
+                        else:
+                            log_say(f"Motor init failed: {e}, retry {attempt + 1}/3")
+                            time.sleep(1)
+                            if attempt == 2:
+                                raise
 
-        try:
-            req_id = cmd_mgr.start(prompt=prompt, options=options)
-        except BusyError:
-            return jsonify({"error": {"code": "busy", "http": 409, "message": "Another command is in progress"}}), 409
+                if use_act_model:
+                    # ACT Model inference path
+                    status_store.update(req_id, {"state": "executing", "phase": "load_model", "message": "Loading ACT model"})
+                    
+                    model_path = "/Users/samu/last/pretrained_model"
+                    policy = ACTPolicy.from_pretrained(model_path)
+                    policy.eval()  # Set to evaluation mode
+                    
+                    status_store.update(req_id, {"state": "executing", "phase": "inference", "message": "Running ACT model inference"})
+                    
+                    # Run inference loop for specified duration (e.g., 30 seconds)
+                    control_time_s = 30
+                    fps = 30
+                    total_steps = int(control_time_s * fps)
+                    
+                    for step in range(total_steps):
+                        t0 = time.perf_counter()
+                        
+                        # Get observation from robot (returns dict with camera images and state)
+                        observation = robot.capture_observation()
+                        
+                        # Run policy inference - policy handles preprocessing internally
+                        with torch.no_grad():
+                            action_dict = policy.select_action(observation)
+                        
+                        # Send action to robot
+                        robot.send_action(action_dict)
+                        
+                        # Wait for next timestep
+                        elapsed = time.perf_counter() - t0
+                        if elapsed < 1.0 / fps:
+                            time.sleep(1.0 / fps - elapsed)
+                        
+                        # Update progress
+                        if step % max(1, fps // 2) == 0:
+                            pct = int((step + 1) * 100 / total_steps)
+                            status_store.update(req_id, {"phase": "inference", "progress": pct, "message": f"Inference {pct}%"})
+                    
+                else:
+                    # Dataset replay path (command 0)
+                    episode_idx = 0
+                    
+                    # Disable multiprocessing to avoid Python 3.14 pickle issues
+                    os.environ["HF_DATASETS_IN_MEMORY_MAX_SIZE"] = "0"
+                    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+                    
+                    status_store.update(req_id, {"state": "executing", "phase": "load", "message": f"Loading dataset {dataset_id} ep {episode_idx}"})
+                    dataset = LeRobotDataset(dataset_id, episodes=[episode_idx])
+                    actions = dataset.hf_dataset.select_columns("action")
 
+                    status_store.update(req_id, {"state": "executing", "phase": "replay", "message": f"Replaying episode {episode_idx}"})
+                    for idx in range(dataset.num_frames):
+                        t0 = time.perf_counter()
+                        action = {
+                            name: float(actions[idx]["action"][i])
+                            for i, name in enumerate(dataset.features["action"]["names"])
+                        }
+                        robot.send_action(action)
+                        busy_wait(max(0, 1.0 / dataset.fps - (time.perf_counter() - t0)))
+                        # occasional progress update
+                        if idx % max(1, dataset.fps // 2) == 0:
+                            pct = int((idx + 1) * 100 / max(1, dataset.num_frames))
+                            status_store.update(req_id, {"phase": "replay", "progress": pct, "message": f"Replaying {pct}%"})
+
+                # Move to ending position and cleanup
+                robot.send_action(ending_position)
+                time.sleep(1)
+                
+                status_store.update(req_id, {"state": "succeeded", "message": "Episode finished and robot disconnected."})
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                log_say(f"Robot episode failed: {error_details}")
+                status_store.update(req_id, {"state": "failed", "message": f"{str(e)}\n\nTraceback:\n{error_details}"})
+            finally:
+                # Always disconnect robot, even on error
+                if robot is not None:
+                    try:
+                        robot.disconnect()
+                        log_say("Robot disconnected successfully")
+                    except Exception as disc_err:
+                        log_say(f"Warning: Disconnect failed: {disc_err}")
+
+        threading.Thread(target=_run_robot_episode, name="run-robot-episode", daemon=True).start()
         return jsonify({"request_id": req_id, "status": "accepted"}), 202
 
     @app.get("/status/<request_id>")
@@ -113,27 +285,77 @@ def create_app() -> Flask:
 
     @app.post("/dispense_treat")
     def dispense():
-        data = request.get_json(force=True, silent=True) or {}
-        duration_ms = int(data.get("duration_ms", 600))
-        try:
-            servo.dispense(duration_ms)
-            return jsonify({"status": "ok"}), 200
-        except Exception as e:
-            return jsonify({"error": {"code": "hardware_error", "http": 500, "message": str(e)}}), 500
+        # Always run the LeRobot one-shot episode inline (background thread)
+        req_id = str(uuid.uuid4())
+        status_store.create(req_id, {"state": "queued", "phase": None, "message": "robot episode queued"})
 
-    @app.post("/speak")
-    def speak():
-        data = request.get_json(force=True, silent=True) or {}
-        text = (data.get("text") or "").strip()
-        if not text:
-            return jsonify({"error": {"code": "invalid", "http": 400, "message": "Missing text"}}), 400
-        try:
-            tts.speak(text)
-            return jsonify({"status": "ok"}), 200
-        except Exception as e:
-            return jsonify({"error": {"code": "tts_error", "http": 500, "message": str(e)}}), 500
+        def _run_robot_episode():
+            try:
+                # Import heavy deps lazily so server can start without them
+                from lerobot.datasets.lerobot_dataset import LeRobotDataset
+                from lerobot.robots.so100_follower.config_so100_follower import SO100FollowerConfig
+                from lerobot.robots.so100_follower.so100_follower import SO100Follower
+                from lerobot.utils.robot_utils import busy_wait
+                from lerobot.utils.utils import log_say
+            except Exception as e:
+                status_store.update(req_id, {"state": "failed", "message": f"Import error: {e}"})
+                return
 
-    # Attach components for testing/access if needed
+            # Config (allow env overrides)
+            try:
+                episode_idx = int(os.getenv("EPISODE_IDX", os.getenv("LEROBOT_EPISODE_IDX", "0")))
+            except Exception:
+                episode_idx = 0
+            dataset_id = os.getenv("HF_DATASET_ID", os.getenv("LEROBOT_DATASET", "Shrek0/pet_main"))
+            robot_port = os.getenv("ROBOT_PORT", os.getenv("LEROBOT_PORT", "/dev/tty.usbmodem5A460836061"))
+            robot_id = os.getenv("ROBOT_ID", os.getenv("LEROBOT_ID", "my_awesome_follower_arm10"))
+
+            try:
+                status_store.update(req_id, {"state": "executing", "phase": "connect", "message": f"Connecting robot at {robot_port}"})
+                robot_config = SO100FollowerConfig(port=robot_port, id=robot_id)
+                robot = SO100Follower(robot_config)
+                # Retry connect
+                for attempt in range(3):
+                    try:
+                        robot.connect()
+                        break
+                    except RuntimeError as e:
+                        log_say(f"Motor init failed: {e}, retry {attempt + 1}/3")
+                        time.sleep(1)
+
+                status_store.update(req_id, {"state": "executing", "phase": "load", "message": f"Loading dataset {dataset_id} ep {episode_idx}"})
+                dataset = LeRobotDataset(dataset_id, episodes=[episode_idx])
+                actions = dataset.hf_dataset.select_columns("action")
+
+                status_store.update(req_id, {"state": "executing", "phase": "replay", "message": f"Replaying episode {episode_idx}"})
+                for idx in range(dataset.num_frames):
+                    t0 = time.perf_counter()
+                    action = {
+                        name: float(actions[idx]["action"][i])
+                        for i, name in enumerate(dataset.features["action"]["names"])
+                    }
+                    robot.send_action(action)
+                    busy_wait(max(0, 1.0 / dataset.fps - (time.perf_counter() - t0)))
+                    # occasional progress update
+                    if idx % max(1, dataset.fps // 2) == 0:
+                        pct = int((idx + 1) * 100 / max(1, dataset.num_frames))
+                        status_store.update(req_id, {"phase": "replay", "progress": pct, "message": f"Replaying {pct}%"})
+
+                # Neutral pose and cleanup
+                robot.send_action({name: 0.0 for name in dataset.features["action"]["names"]})
+                time.sleep(1)
+                try:
+                    robot.disconnect()
+                except Exception:
+                    pass
+                status_store.update(req_id, {"state": "succeeded", "message": "Episode finished and robot disconnected."})
+            except Exception as e:
+                status_store.update(req_id, {"state": "failed", "message": str(e)})
+
+        threading.Thread(target=_run_robot_episode, name="run-robot-episode", daemon=True).start()
+        return jsonify({"request_id": req_id, "status": "accepted"}), 202
+
+    # Expose key components and settings on app.config for debugging/introspection
     app.config.update({
         "camera": camera,
         "status_store": status_store,
@@ -146,8 +368,15 @@ def create_app() -> Flask:
         "PORT": port,
         "USE_HARDWARE": use_hardware,
         "MODEL_MODE": model_mode,
-        "CALIBRATION_PATH": calibration_path,
+        "CALIBRATION_PATH": calibration_path, 
     })
+
+    # Optional: start LeRobot background worker on a second thread if enabled
+    try:
+        maybe_start_lerobot_worker(app)
+    except Exception:
+        # Never block server startup due to optional worker issues
+        pass
 
     return app
 
