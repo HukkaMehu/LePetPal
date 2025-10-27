@@ -15,7 +15,7 @@ Work Distribution:
 - Samu: Robotics, ML model deployment, AI finetuning, Robotics backend
 - Touko: Frontend and Backend development
 - Henri: Frontend and Backend development
-- Deepaker: Smartwatch integration, Robotics and AI finetuning
+- Deepanker: Smartwatch integration, Robotics and AI finetuning
 
 ---
 
