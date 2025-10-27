@@ -2,7 +2,7 @@
 
 An intelligent robotic pet companion powered by LeRobot ACT (Action Chunking Transformer) models and real-time vision AI. LePetPal can play fetch, interact with pets, and learn new behaviors through imitation learning and can be operated manually via connecting to it using a smartwatch.
 
-## 🎯 Project Overview
+## 🎯 Project Overview and Work Distribution
 
 LePetPal is a hackathon project that combines:
 - **LeRobot Framework**: ACT policy for robotic control
@@ -10,6 +10,12 @@ LePetPal is a hackathon project that combines:
 - **Real-time Vision**: Camera-based object detection and tracking
 - **Dataset Replay**: Pre-recorded demonstrations from HuggingFace
 - **Live Inference**: ACT model running on live camera feed
+
+Work Distribution:
+- Samu: Robotics, ML model deployment, AI finetuning, Robotics backend
+- Touko: Frontend and Backend development
+- Henri: Frontend and Backend development
+- Deepaker: Smartwatch integration, Robotics and AI finetuning
 
 ---
 
