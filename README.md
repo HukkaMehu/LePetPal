@@ -1,6 +1,6 @@
 # 🐾 LePetPal - AI-Powered Pet Robot
 
-An intelligent robotic pet companion powered by LeRobot ACT (Action Chunking Transformer) models and real-time vision AI. LePetPal can play fetch, interact with pets, and learn new behaviors through imitation learning.
+An intelligent robotic pet companion powered by LeRobot ACT (Action Chunking Transformer) models and real-time vision AI. LePetPal can play fetch, interact with pets, and learn new behaviors through imitation learning and can be operated manually via connecting to it using a smartwatch.
 
 ## 🎯 Project Overview
 
